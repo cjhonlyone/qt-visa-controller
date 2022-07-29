@@ -5,6 +5,7 @@
 #include <QPushButton>
 #include <QLineEdit>
 #include <QSignalMapper>
+#include <QTimer>
 
 #include <QDebug>
 #include "visa.h"
@@ -29,6 +30,7 @@ private slots:
     void handleGetParam(int id);
     void handleVoltprotLabel(int id);
     void handleCurrprotLabel(int id);
+    void handleMeas(int id);
 
 private:
     Ui::MainWindow *ui;
@@ -56,10 +58,17 @@ private:
     QList<QLineEdit *> Voltprot_list;
     QList<QLineEdit *> Currprot_list;
 
+    QList<QPushButton *> MEASVoltLabel_list;
+    QList<QPushButton *> MEASCurrLabel_list;
+    QList<QPushButton *> MEASPwrrLabel_list;
+    QList<QLineEdit *> MEASVolt_list;
+    QList<QLineEdit *> MEASCurr_list;
+    QList<QLineEdit *> MEASPwrr_list;
+
     QList<QPushButton *> AllQPushButton_list;
     QList<QLineEdit *> AllQLineEdit_list;
 
-
+    QList<QTimer *> AllQTimer_list;
 
 
     QSignalMapper * OUTP_Mapper;
@@ -67,6 +76,8 @@ private:
     QSignalMapper * GetParam_Mapper;
     QSignalMapper * VoltprotLabel_Mapper;
     QSignalMapper * CurrprotLabel_Mapper;
+
+    QSignalMapper * QTimer_Mapper;
 
 
 };

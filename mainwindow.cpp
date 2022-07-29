@@ -19,20 +19,26 @@ MainWindow::MainWindow(QWidget *parent)
     AllQPushButton_list = ui->tab->findChildren<QPushButton *>();
     AllQLineEdit_list = ui->tab->findChildren<QLineEdit *>();
 
-    OUTP_list = ui->tab->findChildren<QPushButton *>(QRegularExpression("OUTP_+"));
-    SetParam_list = ui->tab->findChildren<QPushButton *>(QRegularExpression("SetParam_+"));
-    GetParam_list = ui->tab->findChildren<QPushButton *>(QRegularExpression("GetParam_+"));
-    VoltLabel_list = ui->tab->findChildren<QPushButton *>(QRegularExpression("VoltLabel_+"));
-    CurrLabel_list = ui->tab->findChildren<QPushButton *>(QRegularExpression("CurrLabel_+"));
-    VoltprotLabel_list = ui->tab->findChildren<QPushButton *>(QRegularExpression("VoltprotLabel_+"));
-    CurrprotLabel_list = ui->tab->findChildren<QPushButton *>(QRegularExpression("CurrprotLabel_+"));
+    OUTP_list = ui->tab->findChildren<QPushButton *>(QRegularExpression("^OUTP_+"));
+    SetParam_list = ui->tab->findChildren<QPushButton *>(QRegularExpression("^SetParam_+"));
+    GetParam_list = ui->tab->findChildren<QPushButton *>(QRegularExpression("^GetParam_+"));
+    VoltLabel_list = ui->tab->findChildren<QPushButton *>(QRegularExpression("^VoltLabel_+"));
+    CurrLabel_list = ui->tab->findChildren<QPushButton *>(QRegularExpression("^CurrLabel_+"));
+    VoltprotLabel_list = ui->tab->findChildren<QPushButton *>(QRegularExpression("^VoltprotLabel_+"));
+    CurrprotLabel_list = ui->tab->findChildren<QPushButton *>(QRegularExpression("^CurrprotLabel_+"));
 
-    Volt_list = ui->tab->findChildren<QLineEdit *>(QRegularExpression("Volt_+"));
-    Curr_list = ui->tab->findChildren<QLineEdit *>(QRegularExpression("Curr_+"));
-    Voltprot_list = ui->tab->findChildren<QLineEdit *>(QRegularExpression("Voltprot_+"));
-    Currprot_list = ui->tab->findChildren<QLineEdit *>(QRegularExpression("Currprot_+"));
+    MEASVoltLabel_list = ui->tab->findChildren<QPushButton *>(QRegularExpression("^MEASVoltLabel_+"));
+    MEASCurrLabel_list = ui->tab->findChildren<QPushButton *>(QRegularExpression("^MEASCurrLabel_+"));
+    MEASPwrrLabel_list = ui->tab->findChildren<QPushButton *>(QRegularExpression("^MEASPwrrLabel_+"));
 
+    Volt_list = ui->tab->findChildren<QLineEdit *>(QRegularExpression("^Volt_+"));
+    Curr_list = ui->tab->findChildren<QLineEdit *>(QRegularExpression("^Curr_+"));
+    Voltprot_list = ui->tab->findChildren<QLineEdit *>(QRegularExpression("^Voltprot_+"));
+    Currprot_list = ui->tab->findChildren<QLineEdit *>(QRegularExpression("^Currprot_+"));
 
+    MEASVolt_list = ui->tab->findChildren<QLineEdit *>(QRegularExpression("^MEASVolt_+"));
+    MEASCurr_list = ui->tab->findChildren<QLineEdit *>(QRegularExpression("^MEASCurr_+"));
+    MEASPwrr_list = ui->tab->findChildren<QLineEdit *>(QRegularExpression("^MEASPwrr_+"));
 
     for (int i = 0; i < OUTP_list.size(); i++){
         OUTP_list[i]->setAutoFillBackground(true);
@@ -46,7 +52,6 @@ MainWindow::MainWindow(QWidget *parent)
         CurrprotLabel_list[i]->setAutoFillBackground(true);
         CurrprotLabel_list[i]->setFlat(true);
         CurrprotLabel_list[i]->setPalette(p_OFF);
-
 
         VoltLabel_list[i]->setDisabled(true);
         CurrLabel_list[i]->setDisabled(true);
@@ -79,6 +84,25 @@ MainWindow::MainWindow(QWidget *parent)
 
         Voltprot_list[i]->setText("6");
         Currprot_list[i]->setText("2");
+
+
+        MEASVoltLabel_list[i]->setDisabled(true);
+        MEASCurrLabel_list[i]->setDisabled(true);
+        MEASPwrrLabel_list[i]->setDisabled(true);
+
+        MEASVolt_list[i]->setDisabled(true);
+        MEASCurr_list[i]->setDisabled(true);
+        MEASPwrr_list[i]->setDisabled(true);
+
+        MEASVoltLabel_list[i]->setText(QStringLiteral("电压(V)"));
+        MEASCurrLabel_list[i]->setText(QStringLiteral("电流(A)"));
+        MEASPwrrLabel_list[i]->setText(QStringLiteral("功率(W)"));
+
+        MEASPwrr_list[i]->setMinimumWidth(80);
+        MEASCurr_list[i]->setMinimumWidth(80);
+        MEASVolt_list[i]->setMinimumWidth(80);
+
+        AllQTimer_list.append(new QTimer(this));
     }
 
 
@@ -87,6 +111,7 @@ MainWindow::MainWindow(QWidget *parent)
     GetParam_Mapper= new QSignalMapper(this);
     VoltprotLabel_Mapper= new QSignalMapper(this);
     CurrprotLabel_Mapper= new QSignalMapper(this);
+    QTimer_Mapper= new QSignalMapper(this);
 
     for (int i = 0; i < OUTP_list.size(); ++i) {
         connect(OUTP_list[i], SIGNAL(clicked()), OUTP_Mapper, SLOT(map()));
@@ -100,6 +125,9 @@ MainWindow::MainWindow(QWidget *parent)
         GetParam_Mapper->setMapping(GetParam_list[i], i);
         VoltprotLabel_Mapper->setMapping(VoltprotLabel_list[i], i);
         CurrprotLabel_Mapper->setMapping(CurrprotLabel_list[i], i);
+
+        connect(AllQTimer_list[i], SIGNAL(timeout()), QTimer_Mapper, SLOT(map()));
+        QTimer_Mapper->setMapping(AllQTimer_list[i], i);
     }
 
     connect(OUTP_Mapper, SIGNAL(mapped(int)), this, SLOT(handleOUTP(int)));
@@ -107,6 +135,8 @@ MainWindow::MainWindow(QWidget *parent)
     connect(GetParam_Mapper, SIGNAL(mapped(int)), this, SLOT(handleGetParam(int)));
     connect(VoltprotLabel_Mapper, SIGNAL(mapped(int)), this, SLOT(handleVoltprotLabel(int)));
     connect(CurrprotLabel_Mapper, SIGNAL(mapped(int)), this, SLOT(handleCurrprotLabel(int)));
+
+    connect(QTimer_Mapper, SIGNAL(mapped(int)), this, SLOT(handleMeas(int)));
 
     defaultRM = NULL;
     instr = NULL;
@@ -118,51 +148,6 @@ MainWindow::MainWindow(QWidget *parent)
 MainWindow::~MainWindow()
 {
     delete ui;
-}
-
-
-void MainWindow::on_CONNECTLAN_clicked()
-{
-    ViUInt32 retCount;
-    ViChar	buffer[MAX_CNT];	/* For checking errors */
-
-    if (ui->CONNECTLAN->text() == QStringLiteral("连接")){
-        ui->CONNECTLAN->setText(QStringLiteral("断开"));
-
-        /* Communication channels */
-        /* Return count from string I/O */
-        /* Buffer for string I/O */
-        /* Begin by initializing the system */
-        status = viOpenDefaultRM(&defaultRM);
-        if (status < VI_SUCCESS) {
-            QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Initializing VISA..."));
-        }
-        /* NOTE: For simplicity, we will not show error checking */
-        status = viOpen(defaultRM, (ViRsrc)"TCPIP0::192.168.25.3::INSTR", VI_NULL, VI_NULL, &instr);
-        if (status < VI_SUCCESS) {
-            QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Opening Resource..."));
-        }
-        /* Set the timeout for message-based communication */
-        status = viSetAttribute(instr, VI_ATTR_TMO_VALUE, 5000);
-        if (status < VI_SUCCESS) {
-            QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Setting Attribute..."));
-        }
-
-        for (int i = 0; i < OUTP_list.size(); ++i) {
-            handleGetParam(i);
-        }
-
-
-    }
-    else{
-        ui->CONNECTLAN->setText(QStringLiteral("连接"));
-
-        status = viClose(instr);
-        status = viClose(defaultRM);
-        defaultRM = NULL;
-        instr = NULL;
-    }
-
 }
 
 #define INST_s ":INST CH%d\n"
@@ -184,6 +169,8 @@ void MainWindow::on_CONNECTLAN_clicked()
 #define VOLTPROTSTAT_g ":VOLT:PROT:STAT?\n"
 #define CURRPROTSTAT_g ":CURR:PROT:STAT?\n"
 
+#define MEASALL_g ":MEAS:ALL? CH%d\n"
+
 ViStatus VISA_POWER_SETValueBool(ViSession instr, uint32_t ch, const char* Value)
 {
     ViStatus status;
@@ -203,7 +190,6 @@ ViStatus VISA_POWER_SETValueBool(ViSession instr, uint32_t ch, const char* Value
 
     return status;
 }
-
 ViStatus VISA_POWER_SETValue(ViSession instr, uint32_t ch, const char * format, float Value)
 {
     ViStatus status;
@@ -238,7 +224,6 @@ ViStatus VISA_POWER_SETBool(ViSession instr, uint32_t ch, const char * format, c
     status = viWrite(instr, (ViBuf)buffer, bufferCount, (ViPUInt32)&retCount);
     return status;
 }
-
 ViStatus VISA_POWER_GETValue(ViSession instr, uint32_t ch, const char * format, float *Valueptr)
 {
     ViStatus status;
@@ -274,6 +259,21 @@ ViStatus VISA_POWER_GETBool(ViSession instr, uint32_t ch, const char * format, V
     if (status < VI_SUCCESS) {
         return status;
     }
+    bufferCount = sprintf_s(buffer, sizeof(buffer), format, ch+1);
+    status = viWrite(instr, (ViBuf)buffer, bufferCount, (ViPUInt32)retCountptr);
+    status = viRead(instr, (ViBuf)bufferptr, bufferptrCnt, (ViPUInt32)retCountptr);
+    if (status < VI_SUCCESS) {
+        return status;
+    }
+    bufferptr[*retCountptr] = '\0';
+    return status;
+}
+ViStatus VISA_MEAS_GETBool(ViSession instr, uint32_t ch, const char * format, ViBuf bufferptr, ViUInt32 bufferptrCnt, ViPUInt32 retCountptr)
+{
+    ViStatus status;
+    ViChar	buffer[MAX_CNT];	/* For checking errors */
+
+    ViUInt32 bufferCount;
     bufferCount = sprintf_s(buffer, sizeof(buffer), format, ch+1);
     status = viWrite(instr, (ViBuf)buffer, bufferCount, (ViPUInt32)retCountptr);
     status = viRead(instr, (ViBuf)bufferptr, bufferptrCnt, (ViPUInt32)retCountptr);
@@ -418,4 +418,62 @@ void MainWindow::handleCurrprotLabel(int id)
     {
         QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("未连接仪器"));
     }
+}
+void MainWindow::handleMeas(int id)
+{
+    ViChar	buffer[MAX_CNT];	/* For checking errors */
+    ViUInt32 retCount;
+
+    VISA_MEAS_GETBool(instr, id, MEASALL_g, (ViBuf)buffer, MAX_CNT, &retCount);
+    QString line(buffer);
+    QStringList list = line.split(",");
+    MEASVolt_list[id]->setText(QString("%1").arg(list.at(0).toFloat(), 0, 'g',4));
+    MEASCurr_list[id]->setText(QString("%1").arg(list.at(1).toFloat(), 0, 'g',4));
+    MEASPwrr_list[id]->setText(QString("%1").arg(list.at(2).toFloat(), 0, 'g',4));
+}
+void MainWindow::on_CONNECTLAN_clicked()
+{
+    ViUInt32 retCount;
+    ViChar	buffer[MAX_CNT];	/* For checking errors */
+
+    if (ui->CONNECTLAN->text() == QStringLiteral("连接")){
+        ui->CONNECTLAN->setText(QStringLiteral("断开"));
+
+        /* Communication channels */
+        /* Return count from string I/O */
+        /* Buffer for string I/O */
+        /* Begin by initializing the system */
+        status = viOpenDefaultRM(&defaultRM);
+        if (status < VI_SUCCESS) {
+            QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Initializing VISA..."));
+        }
+        /* NOTE: For simplicity, we will not show error checking */
+        status = viOpen(defaultRM, (ViRsrc)"TCPIP0::192.168.25.3::INSTR", VI_NULL, VI_NULL, &instr);
+        if (status < VI_SUCCESS) {
+            QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Opening Resource..."));
+        }
+        /* Set the timeout for message-based communication */
+        status = viSetAttribute(instr, VI_ATTR_TMO_VALUE, 5000);
+        if (status < VI_SUCCESS) {
+            QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Setting Attribute..."));
+        }
+
+        for (int i = 0; i < OUTP_list.size(); ++i) {
+            handleGetParam(i);
+            AllQTimer_list[i]->start(250);
+        }
+
+    }
+    else{
+        ui->CONNECTLAN->setText(QStringLiteral("连接"));
+
+        for (int i = 0; i < OUTP_list.size(); ++i) {
+            AllQTimer_list[i]->stop();
+        }
+        status = viClose(instr);
+        status = viClose(defaultRM);
+        defaultRM = NULL;
+        instr = NULL;
+    }
+
 }
