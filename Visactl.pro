@@ -22,8 +22,8 @@ FORMS += \
 #LIBS += -L"C:/Program Files (x86)/IVI Foundation/VISA/WinNT/lib/msc" -lvisa32 -lnivisa64
 
 INCLUDEPATH += "C:\Program Files (x86)\IVI Foundation\VISA\WinNT\Include"
-LIBS += "C:\Program Files (x86)\IVI Foundation\VISA\WinNT\Lib_x64\msc\visa64.lib"
-LIBS += "C:\Program Files (x86)\IVI Foundation\VISA\WinNT\Lib_x64\msc\nivisa64.lib"
+LIBS += "C:\Program Files (x86)\IVI Foundation\VISA\WinNT\Lib\msc\visa32.lib"
+LIBS += "C:\Program Files (x86)\IVI Foundation\VISA\WinNT\Lib\msc\ivi.lib"
 
 # for msvc > 2015
 #win32:msvc{

@@ -19,26 +19,29 @@ MainWindow::MainWindow(QWidget *parent)
     AllQPushButton_list = ui->tab->findChildren<QPushButton *>();
     AllQLineEdit_list = ui->tab->findChildren<QLineEdit *>();
 
-    OUTP_list = ui->tab->findChildren<QPushButton *>(QRegularExpression("^OUTP_+"));
-    SetParam_list = ui->tab->findChildren<QPushButton *>(QRegularExpression("^SetParam_+"));
-    GetParam_list = ui->tab->findChildren<QPushButton *>(QRegularExpression("^GetParam_+"));
-    VoltLabel_list = ui->tab->findChildren<QPushButton *>(QRegularExpression("^VoltLabel_+"));
-    CurrLabel_list = ui->tab->findChildren<QPushButton *>(QRegularExpression("^CurrLabel_+"));
-    VoltprotLabel_list = ui->tab->findChildren<QPushButton *>(QRegularExpression("^VoltprotLabel_+"));
-    CurrprotLabel_list = ui->tab->findChildren<QPushButton *>(QRegularExpression("^CurrprotLabel_+"));
+    for (int i=1;i<=3;i++)
+    {
+        OUTP_list.append(ui->tab->findChild<QPushButton *>(QString("OUTP_%1").arg(i)));
+        SetParam_list.append(ui->tab->findChild<QPushButton *>(QString("SetParam_%1").arg(i)));
+        GetParam_list.append(ui->tab->findChild<QPushButton *>(QString("GetParam_%1").arg(i)));
+        VoltLabel_list.append(ui->tab->findChild<QPushButton *>(QString("VoltLabel_%1").arg(i)));
+        CurrLabel_list.append(ui->tab->findChild<QPushButton *>(QString("CurrLabel_%1").arg(i)));
+        VoltprotLabel_list.append(ui->tab->findChild<QPushButton *>(QString("VoltprotLabel_%1").arg(i)));
+        CurrprotLabel_list.append(ui->tab->findChild<QPushButton *>(QString("CurrprotLabel_%1").arg(i)));
 
-    MEASVoltLabel_list = ui->tab->findChildren<QPushButton *>(QRegularExpression("^MEASVoltLabel_+"));
-    MEASCurrLabel_list = ui->tab->findChildren<QPushButton *>(QRegularExpression("^MEASCurrLabel_+"));
-    MEASPwrrLabel_list = ui->tab->findChildren<QPushButton *>(QRegularExpression("^MEASPwrrLabel_+"));
+        MEASVoltLabel_list.append(ui->tab->findChild<QPushButton *>(QString("MEASVoltLabel_%1").arg(i)));
+        MEASCurrLabel_list.append(ui->tab->findChild<QPushButton *>(QString("MEASCurrLabel_%1").arg(i)));
+        MEASPwrrLabel_list.append(ui->tab->findChild<QPushButton *>(QString("MEASPwrrLabel_%1").arg(i)));
 
-    Volt_list = ui->tab->findChildren<QLineEdit *>(QRegularExpression("^Volt_+"));
-    Curr_list = ui->tab->findChildren<QLineEdit *>(QRegularExpression("^Curr_+"));
-    Voltprot_list = ui->tab->findChildren<QLineEdit *>(QRegularExpression("^Voltprot_+"));
-    Currprot_list = ui->tab->findChildren<QLineEdit *>(QRegularExpression("^Currprot_+"));
+        Volt_list.append(ui->tab->findChild<QLineEdit *>(QString("Volt_%1").arg(i)));
+        Curr_list.append(ui->tab->findChild<QLineEdit *>(QString("Curr_%1").arg(i)));
+        Voltprot_list.append(ui->tab->findChild<QLineEdit *>(QString("Voltprot_%1").arg(i)));
+        Currprot_list.append(ui->tab->findChild<QLineEdit *>(QString("Currprot_%1").arg(i)));
 
-    MEASVolt_list = ui->tab->findChildren<QLineEdit *>(QRegularExpression("^MEASVolt_+"));
-    MEASCurr_list = ui->tab->findChildren<QLineEdit *>(QRegularExpression("^MEASCurr_+"));
-    MEASPwrr_list = ui->tab->findChildren<QLineEdit *>(QRegularExpression("^MEASPwrr_+"));
+        MEASVolt_list.append(ui->tab->findChild<QLineEdit *>(QString("MEASVolt_%1").arg(i)));
+        MEASCurr_list.append(ui->tab->findChild<QLineEdit *>(QString("MEASCurr_%1").arg(i)));
+        MEASPwrr_list.append(ui->tab->findChild<QLineEdit *>(QString("MEASPwrr_%1").arg(i)));
+    }
 
     for (int i = 0; i < OUTP_list.size(); i++){
         OUTP_list[i]->setAutoFillBackground(true);
@@ -105,7 +108,6 @@ MainWindow::MainWindow(QWidget *parent)
         AllQTimer_list.append(new QTimer(this));
     }
 
-
     OUTP_Mapper= new QSignalMapper(this);
     SetParam_Mapper= new QSignalMapper(this);
     GetParam_Mapper= new QSignalMapper(this);
@@ -138,11 +140,80 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(QTimer_Mapper, SIGNAL(mapped(int)), this, SLOT(handleMeas(int)));
 
-    UDP_send = new QUdpSocket(this);
-    UDP_recv = new QUdpSocket(this);
+    Udp_Send = new QUdpSocket(this);
+    Udp_Send->bind(QHostAddress::Any,6111,QUdpSocket::ReuseAddressHint);
+    Udp_Recv = new QUdpSocket(this);
+    Udp_Recv->bind(QHostAddress::AnyIPv4,6111);
+    connect(Udp_Recv,&QUdpSocket::readyRead,this,&MainWindow::processData);
+
+/*********************************************************************/
+    for (int i=1;i<=2;i++)
+    {
+        SDG_OUTP_list.append(ui->tab_2->findChild<QPushButton *>(QString("SDG_OUTP_%1").arg(i)));
+        SDG_SendValue_list.append(ui->tab_2->findChild<QPushButton *>(QString("SendValue_%1").arg(i)));
+        SDG_ChooseFile_list.append(ui->tab_2->findChild<QPushButton *>(QString("ChooseFile_%1").arg(i)));
+
+        SDG_FilePath_list.append(ui->tab_2->findChild<QLineEdit *>(QString("FilePath_%1").arg(i)));
+        SDG_SampleRate_list.append(ui->tab_2->findChild<QLineEdit *>(QString("SampleRate_%1").arg(i)));
+        SDG_Amplitude_list.append(ui->tab_2->findChild<QLineEdit *>(QString("Amplitude_%1").arg(i)));
+        SDG_Offset_list.append(ui->tab_2->findChild<QLineEdit *>(QString("Offset_%1").arg(i)));
+        SDG_Phase_list.append(ui->tab_2->findChild<QLineEdit *>(QString("Phase_%1").arg(i)));
+    }
+
+    for (int i = 0; i < SDG_OUTP_list.size(); i++){
+        SDG_OUTP_list[i]->setAutoFillBackground(true);
+        SDG_OUTP_list[i]->setFlat(true);
+        SDG_OUTP_list[i]->setPalette(p_OFF);
+        SDG_OUTP_list[i]->setText(QStringLiteral("输出"));
+        SDG_OUTP_list[i]->setMinimumWidth(80);
+
+        SDG_SendValue_list[i]->setAutoFillBackground(true);
+        SDG_SendValue_list[i]->setFlat(true);
+        SDG_SendValue_list[i]->setPalette(p_OFF);
+        SDG_SendValue_list[i]->setText(QStringLiteral("设置参数"));
+        SDG_SendValue_list[i]->setMinimumWidth(80);
+
+        SDG_ChooseFile_list[i]->setAutoFillBackground(true);
+        SDG_ChooseFile_list[i]->setFlat(true);
+        SDG_ChooseFile_list[i]->setPalette(p_OFF);
+        SDG_ChooseFile_list[i]->setText(QStringLiteral("选择文件"));
+        SDG_ChooseFile_list[i]->setMinimumWidth(80);
+
+        SDG_FilePath_list[i]->setMinimumWidth(80);
+        SDG_SampleRate_list[i]->setMinimumWidth(80);
+        SDG_Amplitude_list[i]->setMinimumWidth(80);
+        SDG_Offset_list[i]->setMinimumWidth(80);
+        SDG_Phase_list[i]->setMinimumWidth(80);
+
+        SDG_SampleRate_list[i]->setText("2000");
+        SDG_Amplitude_list[i]->setText("4");
+        SDG_Offset_list[i]->setText("0");
+        SDG_Phase_list[i]->setText("0");
+    }
+
+    SDG_OUTP_Mapper= new QSignalMapper(this);
+    SDG_SendValue_Mapper= new QSignalMapper(this);
+    SDG_ChooseFile_Mapper= new QSignalMapper(this);
+
+    for (int i = 0; i < SDG_OUTP_list.size(); i++) {
+        connect(SDG_OUTP_list[i], SIGNAL(clicked()), SDG_OUTP_Mapper, SLOT(map()));
+        connect(SDG_SendValue_list[i], SIGNAL(clicked()), SDG_SendValue_Mapper, SLOT(map()));
+        connect(SDG_ChooseFile_list[i], SIGNAL(clicked()), SDG_ChooseFile_Mapper, SLOT(map()));
+
+        SDG_OUTP_Mapper->setMapping(SDG_OUTP_list[i], i);
+        SDG_SendValue_Mapper->setMapping(SDG_SendValue_list[i], i);
+        SDG_ChooseFile_Mapper->setMapping(SDG_ChooseFile_list[i], i);
+    }
+
+    connect(SDG_OUTP_Mapper, SIGNAL(mapped(int)), this, SLOT(handleSDGOUTP(int)));
+    connect(SDG_SendValue_Mapper, SIGNAL(mapped(int)), this, SLOT(handleSDGSendValue(int)));
+    connect(SDG_ChooseFile_Mapper, SIGNAL(mapped(int)), this, SLOT(handleSDGChooseFile(int)));
+/*********************************************************************/
 
     defaultRM = NULL;
     instr = NULL;
+    defaultRM_SDG = NULL;
+    instr_SDG = NULL;
 
 //    qDebug() << this->height() << this->width();
 }
@@ -154,7 +225,6 @@ MainWindow::~MainWindow()
 }
 
 #define INST_s ":INST CH%d\n"
-
 #define OUTP_s ":OUTP CH%d,%s\n"
 #define VOLT_s ":VOLT %.2f\n"
 #define CURR_s ":CURR %.2f\n"
@@ -162,7 +232,6 @@ MainWindow::~MainWindow()
 #define CURRPROT_s ":CURR:PROT %.2f\n"
 #define VOLTPROTSTAT_s ":VOLT:PROT:STAT %s\n"
 #define CURRPROTSTAT_s ":CURR:PROT:STAT %s\n"
-
 #define INST_g ":INST?\n"
 #define OUTP_g ":OUTP? CH%d\n"
 #define VOLT_g ":VOLT?\n"
@@ -171,9 +240,53 @@ MainWindow::~MainWindow()
 #define CURRPROT_g ":CURR:PROT?\n"
 #define VOLTPROTSTAT_g ":VOLT:PROT:STAT?\n"
 #define CURRPROTSTAT_g ":CURR:PROT:STAT?\n"
-
 #define MEASALL_g ":MEAS:ALL? CH%d\n"
+#define INSTID_g "*IDN?"
+#define send_bin "C%d:WVDT WVNM,testwave,AMPL,%.3f,OFST,%.3f,PHASE,%.4f,WAVEDATA,"
+#define set_bin "C%d:ARWV NAME,testwave"
+#define SetMode "C%d:SRATE MODE,%s"
+#define SetSample "C%d:SRATE VALUE,%.6f"
 
+ViStatus VISA_INST_GETID(ViSession instr, ViSession defaultRM, const char * IPaddr, QString *INSTID)
+{
+    ViStatus status;
+    ViUInt32 retCount;
+    ViChar   buffer[MAX_CNT];    /* For checking errors */
+    ViUInt32 bufferCount;
+
+    status = viOpenDefaultRM(&defaultRM);
+    if (status < VI_SUCCESS) {
+        QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Initializing VISA..."));
+    }
+    char head[256] ="TCPIP0::";
+    char tail[] ="::INSTR";
+    strcat(head,IPaddr);
+    strcat(head,tail);
+    status = viOpen(defaultRM, (ViRsrc)head, VI_NULL, VI_NULL, &instr);
+    if (status < VI_SUCCESS) {
+        QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Opening Resource..."));
+    }
+    status = viSetAttribute(instr, VI_ATTR_TMO_VALUE, 5000);
+    if (status < VI_SUCCESS) {
+        QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Setting Attribute..."));
+    }
+    bufferCount = sprintf_s(buffer, sizeof(buffer), INSTID_g);
+    status = viWrite(instr, (ViBuf)buffer, bufferCount, (ViPUInt32)&retCount);
+    status = viRead(instr, (ViBuf)buffer, MAX_CNT, (ViPUInt32)&retCount);
+    if (status < VI_SUCCESS) {
+        return status;
+    }
+    buffer[retCount] = '\0';
+
+    *INSTID = QString(buffer);
+
+    status = viClose(instr);
+    status = viClose(defaultRM);
+    defaultRM = NULL;
+    instr = NULL;
+
+    return status;
+}
 ViStatus VISA_POWER_SETValueBool(ViSession instr, uint32_t ch, const char* Value)
 {
     ViStatus status;
@@ -305,7 +418,6 @@ void MainWindow::handleOUTP(int id)
     {
         QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("未连接仪器"));
     }
-
 }
 void MainWindow::handleSetParam(int id)
 {
@@ -373,14 +485,11 @@ void MainWindow::handleGetParam(int id)
             CurrprotLabel_list[id]->setText(QStringLiteral("限流(A)"));
             VISA_POWER_SETBool(instr, id, CURRPROTSTAT_s, "OFF");
         }
-
     }
     else
     {
         QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("未连接仪器"));
     }
-
-
 }
 void MainWindow::handleVoltprotLabel(int id)
 {
@@ -434,13 +543,60 @@ void MainWindow::handleMeas(int id)
     MEASCurr_list[id]->setText(QString("%1").arg(list.at(1).toFloat(), 0, 'g',4));
     MEASPwrr_list[id]->setText(QString("%1").arg(list.at(2).toFloat(), 0, 'g',4));
 }
-void MainWindow::on_CONNECTLAN_clicked()
+void MainWindow::on_SCANLAN_clicked()
+{
+    ui->comboBox_DP->clear();
+    ui->comboBox_SDG->clear();
+    uint8_t WlanScanPM[56]={0x00,0x01,0x23,0x45,0x00,0x00,0x00,0x00,
+                         0x00,0x00,0x00,0x02,0x00,0x01,0x86,0xa0,
+                         0x00,0x00,0x00,0x02,0x00,0x00,0x00,0x03,
+                         0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+                         0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+                         0x00,0x06,0x07,0xaf,0x00,0x00,0x00,0x01,
+                         0x00,0x00,0x00,0x06,0x00,0x00,0x00,0x00};
+    Udp_Send->writeDatagram((const char*)WlanScanPM,56,QHostAddress::Broadcast,111);
+}
+void MainWindow::processData()
+{
+    while(Udp_Recv->hasPendingDatagrams()){
+        QHostAddress TargetIP;
+        quint16 TargetPort;
+        QByteArray dataGram;
+        QString INSTID;
+        dataGram.resize(Udp_Recv->pendingDatagramSize());
+        Udp_Recv->readDatagram(dataGram.data(),dataGram.size(),&TargetIP,&TargetPort);
+
+        QString  TargetIPstr = TargetIP.toString();
+        QByteArray TargetIPchba = TargetIPstr.toLatin1();
+        char*  TargetIPch = TargetIPchba.data();
+
+        VISA_INST_GETID(instr, defaultRM, TargetIPch, &INSTID);
+        QStringList list = INSTID.split(",");
+        QString ModelNum = list[1];
+
+        if(ModelNum.contains("DP",Qt::CaseSensitive)) {
+            ui->comboBox_DP->addItem(TargetIP.toString() + "--" + ModelNum);
+        }
+        else if(ModelNum.contains("SDG",Qt::CaseSensitive)) {
+            ui->comboBox_SDG->addItem(TargetIP.toString() + "--" + ModelNum);
+        }
+    }
+}
+void MainWindow::on_CONNECTLAN_DP_clicked()
 {
     ViUInt32 retCount;
     ViChar	buffer[MAX_CNT];	/* For checking errors */
 
-    if (ui->CONNECTLAN->text() == QStringLiteral("连接")){
-        ui->CONNECTLAN->setText(QStringLiteral("断开"));
+    if (ui->CONNECTLAN_DP->text() == QStringLiteral("连接")){
+
+        if (ui->comboBox_DP->count()==0)
+        {
+            QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("没有可用仪器"));
+            return;
+        }
+
+        ui->CONNECTLAN_DP->setText(QStringLiteral("断开"));
+        ui->comboBox_DP->setDisabled(true);
 
         /* Communication channels */
         /* Return count from string I/O */
@@ -450,8 +606,18 @@ void MainWindow::on_CONNECTLAN_clicked()
         if (status < VI_SUCCESS) {
             QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Initializing VISA..."));
         }
+        QString comboBoxDP = ui->comboBox_DP->currentText();
+        QStringList list = comboBoxDP.split("--");
+        QString IPaddrstr = list[0];
+        QByteArray IPaddrba = IPaddrstr.toLatin1();
+        char* IPaddrch;
+        IPaddrch = IPaddrba.data();
+        char head[256] ="TCPIP0::";
+        char tail[] ="::INSTR";
+        strcat(head,IPaddrch);
+        strcat(head,tail);
         /* NOTE: For simplicity, we will not show error checking */
-        status = viOpen(defaultRM, (ViRsrc)"TCPIP0::192.168.25.3::INSTR", VI_NULL, VI_NULL, &instr);
+        status = viOpen(defaultRM, (ViRsrc)head, VI_NULL, VI_NULL, &instr);
         if (status < VI_SUCCESS) {
             QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Opening Resource..."));
         }
@@ -468,7 +634,8 @@ void MainWindow::on_CONNECTLAN_clicked()
 
     }
     else{
-        ui->CONNECTLAN->setText(QStringLiteral("连接"));
+        ui->CONNECTLAN_DP->setText(QStringLiteral("连接"));
+        ui->comboBox_DP->setEnabled(true);
 
         for (int i = 0; i < OUTP_list.size(); ++i) {
             AllQTimer_list[i]->stop();
@@ -479,12 +646,155 @@ void MainWindow::on_CONNECTLAN_clicked()
         instr = NULL;
     }
 }
-
-void MainWindow::on_SCANLAN_clicked()
+void MainWindow::on_CONNECTLAN_SDG_clicked()
 {
-    ui->Debug_Print->appendPlainText("Scan WLAN");
+    ViUInt32 retCount;
+    ViChar	buffer[MAX_CNT];	/* For checking errors */
 
-    QByteArray dataGram = 0x0000;
-    UDP_send->writeDatagram(dataGram.data(), dataGram.size(), QHostAddress::Broadcast, 6666);
+    if (ui->CONNECTLAN_SDG->text() == QStringLiteral("连接")){
+        if (ui->comboBox_SDG->count()==0)
+        {
+            QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("没有可用仪器"));
+            return;
+        }
+
+        ui->CONNECTLAN_SDG->setText(QStringLiteral("断开"));
+        ui->comboBox_SDG->setDisabled(true);
+
+        /* Communication channels */
+        /* Return count from string I/O */
+        /* Buffer for string I/O */
+        /* Begin by initializing the system */
+        status = viOpenDefaultRM(&defaultRM_SDG);
+        if (status < VI_SUCCESS) {
+            QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Initializing VISA..."));
+        }
+        QString comboBoxSDG = ui->comboBox_SDG->currentText();
+        QStringList list = comboBoxSDG.split("--");
+        QString IPaddrstr = list[0];
+        QByteArray IPaddrba = IPaddrstr.toLatin1();
+        char* IPaddrch;
+        IPaddrch = IPaddrba.data();
+        char head[256] ="TCPIP0::";
+        char tail[] ="::INSTR";
+        strcat(head,IPaddrch);
+        strcat(head,tail);
+        /* NOTE: For simplicity, we will not show error checking */
+        status = viOpen(defaultRM_SDG, (ViRsrc)head, VI_NULL, VI_NULL, &instr_SDG);
+        if (status < VI_SUCCESS) {
+            QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Opening Resource..."));
+        }
+        /* Set the timeout for message-based communication */
+        status = viSetAttribute(instr_SDG, VI_ATTR_TMO_VALUE, 5000);
+        if (status < VI_SUCCESS) {
+            QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Setting Attribute..."));
+        }
+
+    }
+    else{
+        ui->CONNECTLAN_SDG->setText(QStringLiteral("连接"));
+        ui->comboBox_SDG->setEnabled(true);
+
+        status = viClose(instr_SDG);
+        status = viClose(defaultRM_SDG);
+        defaultRM_SDG = NULL;
+        instr_SDG = NULL;
+    }
 }
 
+#define SDG_OUTP_s "C%d:OUTP %s"
+ViStatus VISA_SDG_CtrlOUTP(ViSession instr, uint32_t ch, const char* Value)
+{
+    ViStatus status;
+    ViUInt32 retCount;
+    ViChar	buffer[MAX_CNT];	/* For checking errors */
+    ViUInt32 bufferCount;
+
+    bufferCount = sprintf_s(buffer, sizeof(buffer), SDG_OUTP_s, ch+1, Value);
+    status = viWrite(instr, (ViBuf)buffer, bufferCount, (ViPUInt32)&retCount);
+
+    return status;
+}
+void MainWindow::handleSDGOUTP(int id)
+{
+    if (instr_SDG != NULL)
+    {
+        if (SDG_OUTP_list[id]->palette() == p_OFF){
+            SDG_OUTP_list[id]->setPalette(p_ON);
+            SDG_OUTP_list[id]->setText(QStringLiteral("输出"));
+            VISA_SDG_CtrlOUTP(instr_SDG, id, "ON");
+        }
+        else{
+            SDG_OUTP_list[id]->setPalette(p_OFF);
+            SDG_OUTP_list[id]->setText(QStringLiteral("输出"));
+            VISA_SDG_CtrlOUTP(instr_SDG, id, "OFF");
+        }
+    }
+    else
+    {
+        QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("未连接仪器"));
+    }
+}
+uint8_t File_Buf[1024 * 32];
+uint8_t * File_BufPtr = (uint8_t *)File_Buf;
+void MainWindow::handleSDGSendValue(int id)
+{
+    if (instr_SDG != NULL)
+    {
+        QString FilePath = SDG_FilePath_list[id]->text();
+
+        QString SampleRateStr = SDG_SampleRate_list[id]->text();
+        QString AmplitudeStr = SDG_Amplitude_list[id]->text();
+        QString OffsetStr = SDG_Offset_list[id]->text();
+        QString PhaseStr = SDG_Phase_list[id]->text();
+
+        double SampleRate = SampleRateStr.toFloat();
+        double Amplitude = AmplitudeStr.toFloat();
+        double Offset = OffsetStr.toFloat();
+        double Phase = PhaseStr.toFloat();
+
+        QFile file(FilePath);
+        if(!file.open(QIODevice::ReadOnly)){
+            QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("打开.bin文件失败"));
+            return;
+        }
+        file.read((char *)File_Buf, 1024 * 32);
+        ViUInt32 FileSize = file.size();
+        file.close();
+
+        ViStatus status;
+        ViUInt32 retCount;
+        ViChar	buffer[1024*64];	/* For checking errors */
+        ViChar * bufferPtr = (ViChar *)buffer;
+        ViUInt32 bufferCount;
+
+        bufferCount = sprintf_s(buffer, sizeof(buffer), send_bin, id+1, Amplitude, Offset, Phase);
+        qDebug(buffer);
+        for (int j=0; j<FileSize; j++)
+        {
+            *(uint32_t*)(bufferPtr + bufferCount + j) = File_Buf[j];
+        }
+        status = viWrite(instr_SDG, (ViBuf)buffer, bufferCount+FileSize, (ViPUInt32)&retCount);
+
+        bufferCount = sprintf_s(buffer, sizeof(buffer), set_bin, id+1);
+        qDebug(buffer);
+        status = viWrite(instr_SDG, (ViBuf)buffer, bufferCount, (ViPUInt32)&retCount);
+
+        bufferCount = sprintf_s(buffer, sizeof(buffer), SetMode, id+1, "TARB");
+        qDebug(buffer);
+        status = viWrite(instr_SDG, (ViBuf)buffer, bufferCount, (ViPUInt32)&retCount);
+
+        bufferCount = sprintf_s(buffer, sizeof(buffer), SetSample, id+1, SampleRate);
+        qDebug(buffer);
+        status = viWrite(instr_SDG, (ViBuf)buffer, bufferCount, (ViPUInt32)&retCount);
+    }
+    else
+    {
+        QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("未连接仪器"));
+    }
+}
+void MainWindow::handleSDGChooseFile(int id)
+{
+    QString FilePath = QFileDialog::getOpenFileName().replace('\\','/');
+    SDG_FilePath_list[id]->setText(FilePath);
+}
