@@ -138,6 +138,9 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(QTimer_Mapper, SIGNAL(mapped(int)), this, SLOT(handleMeas(int)));
 
+    UDP_send = new QUdpSocket(this);
+    UDP_recv = new QUdpSocket(this);
+
     defaultRM = NULL;
     instr = NULL;
 
@@ -475,5 +478,13 @@ void MainWindow::on_CONNECTLAN_clicked()
         defaultRM = NULL;
         instr = NULL;
     }
-
 }
+
+void MainWindow::on_SCANLAN_clicked()
+{
+    ui->Debug_Print->appendPlainText("Scan WLAN");
+
+    QByteArray dataGram = 0x0000;
+    UDP_send->writeDatagram(dataGram.data(), dataGram.size(), QHostAddress::Broadcast, 6666);
+}
+

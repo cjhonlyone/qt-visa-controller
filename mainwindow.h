@@ -6,6 +6,7 @@
 #include <QLineEdit>
 #include <QSignalMapper>
 #include <QTimer>
+#include <QtNetwork/QUdpSocket>
 
 #include <QDebug>
 #include "visa.h"
@@ -22,6 +23,9 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
+    QUdpSocket *UDP_send;
+    QUdpSocket *UDP_recv;
+
 private slots:
     void on_CONNECTLAN_clicked();
 
@@ -31,6 +35,8 @@ private slots:
     void handleVoltprotLabel(int id);
     void handleCurrprotLabel(int id);
     void handleMeas(int id);
+
+    void on_SCANLAN_clicked();
 
 private:
     Ui::MainWindow *ui;
