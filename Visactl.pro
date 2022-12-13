@@ -19,11 +19,15 @@ FORMS += \
     mainwindow.ui
 
 #INCLUDEPATH += "C:/Program Files/IVI Foundation/VISA/Win64/Include"
-#LIBS += -L"C:/Program Files (x86)/IVI Foundation/VISA/WinNT/lib/msc" -lvisa32 -lnivisa64
+#LIBS += -L"C:/Program Files/IVI Foundation/VISA/WinNT/lib/msc" -lvisa64 -lnivisa64
 
-INCLUDEPATH += "C:\Program Files (x86)\IVI Foundation\VISA\WinNT\Include"
-LIBS += "C:\Program Files (x86)\IVI Foundation\VISA\WinNT\Lib\msc\visa32.lib"
-LIBS += "C:\Program Files (x86)\IVI Foundation\VISA\WinNT\Lib\msc\ivi.lib"
+#INCLUDEPATH += "C:\Program Files\IVI Foundation\VISA\WinNT\Include"
+#LIBS += "C:\Program Files (x86)\IVI Foundation\VISA\WinNT\Lib\msc\visa32.lib"
+#LIBS += "C:\Program Files (x86)\IVI Foundation\VISA\WinNT\Lib\msc\ivi.lib"
+
+INCLUDEPATH += "C:\Program Files\IVI Foundation\VISA\Win64\Include"
+LIBS += "C:\Program Files\IVI Foundation\VISA\Win64\Lib_x64\msc\visa64.lib"
+LIBS += "C:\Program Files\IVI Foundation\VISA\Win64\Lib_x64\msc\nivisa64.lib"
 
 # for msvc > 2015
 #win32:msvc{
