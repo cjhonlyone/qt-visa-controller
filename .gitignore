@@ -1,5 +1,6 @@
 *.7z
 *.zip
+.qtc_clangd
 
 !/libusb/
 !/zlib/

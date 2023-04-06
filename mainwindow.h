@@ -7,6 +7,7 @@
 #include <QSignalMapper>
 #include <QTimer>
 #include <QtNetwork/QUdpSocket>
+#include <QtNetwork/QNetworkInterface>
 #include <QFileDialog>
 
 #include <QDebug>

@@ -554,7 +554,19 @@ void MainWindow::on_SCANLAN_clicked()
                          0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
                          0x00,0x06,0x07,0xaf,0x00,0x00,0x00,0x01,
                          0x00,0x00,0x00,0x06,0x00,0x00,0x00,0x00};
-    Udp_Send->writeDatagram((const char*)WlanScanPM,56,QHostAddress::Broadcast,111);
+
+    QList<QNetworkInterface> ifaces = QNetworkInterface::allInterfaces();
+    for (int i = 0; i < ifaces.size(); i++)
+    {
+        // Now get all IP addresses for the current interface
+        QList<QNetworkAddressEntry> addrs = ifaces[i].addressEntries();
+
+        // And for any IP address, if it is IPv4 and the interface is active, send the packet
+        for (int j = 0; j < addrs.size(); j++)
+            if ((addrs[j].ip().protocol() == QAbstractSocket::IPv4Protocol) && (addrs[j].broadcast().toString() != ""))
+                Udp_Send->writeDatagram((const char*)WlanScanPM, 56, addrs[j].broadcast(), 111);
+    }
+
 }
 void MainWindow::processData()
 {
