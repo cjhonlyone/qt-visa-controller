@@ -21,9 +21,21 @@ MainWindow::MainWindow(QWidget *parent)
 
     for (int i=1;i<=3;i++)
     {
-        OUTP_list.append(ui->tab->findChild<QPushButton *>(QString("OUTP_%1").arg(i)));
-        SetParam_list.append(ui->tab->findChild<QPushButton *>(QString("SetParam_%1").arg(i)));
-        GetParam_list.append(ui->tab->findChild<QPushButton *>(QString("GetParam_%1").arg(i)));
+        QPushButton* outp_btn = ui->tab->findChild<QPushButton *>(QString("OUTP_%1").arg(i));
+        if (outp_btn) {
+            OUTP_list.append(outp_btn);
+        } else {
+            OUTP_list.append(nullptr); // 保持索引一致性
+        }
+        
+        QPushButton* setparam_btn = ui->tab->findChild<QPushButton *>(QString("SetParam_%1").arg(i));
+        SetParam_list.append(setparam_btn);
+        if (!setparam_btn) qDebug() << "ERROR: Button SetParam_" << i << "not found!";
+        
+        QPushButton* getparam_btn = ui->tab->findChild<QPushButton *>(QString("GetParam_%1").arg(i));
+        GetParam_list.append(getparam_btn);
+        if (!getparam_btn) qDebug() << "ERROR: Button GetParam_" << i << "not found!";
+        
         VoltLabel_list.append(ui->tab->findChild<QPushButton *>(QString("VoltLabel_%1").arg(i)));
         CurrLabel_list.append(ui->tab->findChild<QPushButton *>(QString("CurrLabel_%1").arg(i)));
         VoltprotLabel_list.append(ui->tab->findChild<QPushButton *>(QString("VoltprotLabel_%1").arg(i)));
@@ -108,37 +120,46 @@ MainWindow::MainWindow(QWidget *parent)
         AllQTimer_list.append(new QTimer(this));
     }
 
-    OUTP_Mapper= new QSignalMapper(this);
-    SetParam_Mapper= new QSignalMapper(this);
-    GetParam_Mapper= new QSignalMapper(this);
-    VoltprotLabel_Mapper= new QSignalMapper(this);
-    CurrprotLabel_Mapper= new QSignalMapper(this);
-    QTimer_Mapper= new QSignalMapper(this);
-
+    // 使用现代Lambda表达式替代QSignalMapper
     for (int i = 0; i < OUTP_list.size(); ++i) {
-        connect(OUTP_list[i], SIGNAL(clicked()), OUTP_Mapper, SLOT(map()));
-        connect(SetParam_list[i], SIGNAL(clicked()), SetParam_Mapper, SLOT(map()));
-        connect(GetParam_list[i], SIGNAL(clicked()), GetParam_Mapper, SLOT(map()));
-        connect(VoltprotLabel_list[i], SIGNAL(clicked()), VoltprotLabel_Mapper, SLOT(map()));
-        connect(CurrprotLabel_list[i], SIGNAL(clicked()), CurrprotLabel_Mapper, SLOT(map()));
 
-        OUTP_Mapper->setMapping(OUTP_list[i], i);
-        SetParam_Mapper->setMapping(SetParam_list[i], i);
-        GetParam_Mapper->setMapping(GetParam_list[i], i);
-        VoltprotLabel_Mapper->setMapping(VoltprotLabel_list[i], i);
-        CurrprotLabel_Mapper->setMapping(CurrprotLabel_list[i], i);
+        // 检查按钮是否有效
+        if (OUTP_list[i]) {
+            connect(OUTP_list[i], &QPushButton::clicked, this, [this, i]() {
+                handleOUTP(i);
+            });
+        }
+        
+        if (SetParam_list[i]) {
+            connect(SetParam_list[i], &QPushButton::clicked, this, [this, i]() {
+                handleSetParam(i);
+            });
+        }
+        
+        if (GetParam_list[i]) {
+            connect(GetParam_list[i], &QPushButton::clicked, this, [this, i]() {
+                handleGetParam(i);
+            });
+        }
+        
+        if (VoltprotLabel_list[i]) {
+            connect(VoltprotLabel_list[i], &QPushButton::clicked, this, [this, i]() {
+                handleVoltprotLabel(i);
+            });
+        }
+        
+        if (CurrprotLabel_list[i]) {
+            connect(CurrprotLabel_list[i], &QPushButton::clicked, this, [this, i]() {
+                handleCurrprotLabel(i);
+            });
+        }
 
-        connect(AllQTimer_list[i], SIGNAL(timeout()), QTimer_Mapper, SLOT(map()));
-        QTimer_Mapper->setMapping(AllQTimer_list[i], i);
+        if (AllQTimer_list[i]) {
+            connect(AllQTimer_list[i], &QTimer::timeout, this, [this, i]() {
+                handleMeas(i);
+            });
+        }
     }
-
-    connect(OUTP_Mapper, SIGNAL(mapped(int)), this, SLOT(handleOUTP(int)));
-    connect(SetParam_Mapper, SIGNAL(mapped(int)), this, SLOT(handleSetParam(int)));
-    connect(GetParam_Mapper, SIGNAL(mapped(int)), this, SLOT(handleGetParam(int)));
-    connect(VoltprotLabel_Mapper, SIGNAL(mapped(int)), this, SLOT(handleVoltprotLabel(int)));
-    connect(CurrprotLabel_Mapper, SIGNAL(mapped(int)), this, SLOT(handleCurrprotLabel(int)));
-
-    connect(QTimer_Mapper, SIGNAL(mapped(int)), this, SLOT(handleMeas(int)));
 
     Udp_Send = new QUdpSocket(this);
     Udp_Send->bind(QHostAddress::Any,6111,QUdpSocket::ReuseAddressHint);
@@ -191,23 +212,26 @@ MainWindow::MainWindow(QWidget *parent)
         SDG_Phase_list[i]->setText("0");
     }
 
-    SDG_OUTP_Mapper= new QSignalMapper(this);
-    SDG_SendValue_Mapper= new QSignalMapper(this);
-    SDG_ChooseFile_Mapper= new QSignalMapper(this);
-
+    // 使用Lambda表达式替代QSignalMapper for SDG
     for (int i = 0; i < SDG_OUTP_list.size(); i++) {
-        connect(SDG_OUTP_list[i], SIGNAL(clicked()), SDG_OUTP_Mapper, SLOT(map()));
-        connect(SDG_SendValue_list[i], SIGNAL(clicked()), SDG_SendValue_Mapper, SLOT(map()));
-        connect(SDG_ChooseFile_list[i], SIGNAL(clicked()), SDG_ChooseFile_Mapper, SLOT(map()));
-
-        SDG_OUTP_Mapper->setMapping(SDG_OUTP_list[i], i);
-        SDG_SendValue_Mapper->setMapping(SDG_SendValue_list[i], i);
-        SDG_ChooseFile_Mapper->setMapping(SDG_ChooseFile_list[i], i);
+        if (SDG_OUTP_list[i]) {
+            connect(SDG_OUTP_list[i], &QPushButton::clicked, this, [this, i]() {
+                handleSDGOUTP(i);
+            });
+        }
+        
+        if (SDG_SendValue_list[i]) {
+            connect(SDG_SendValue_list[i], &QPushButton::clicked, this, [this, i]() {
+                handleSDGSendValue(i);
+            });
+        }
+        
+        if (SDG_ChooseFile_list[i]) {
+            connect(SDG_ChooseFile_list[i], &QPushButton::clicked, this, [this, i]() {
+                handleSDGChooseFile(i);
+            });
+        }
     }
-
-    connect(SDG_OUTP_Mapper, SIGNAL(mapped(int)), this, SLOT(handleSDGOUTP(int)));
-    connect(SDG_SendValue_Mapper, SIGNAL(mapped(int)), this, SLOT(handleSDGSendValue(int)));
-    connect(SDG_ChooseFile_Mapper, SIGNAL(mapped(int)), this, SLOT(handleSDGChooseFile(int)));
 /*********************************************************************/
 
     defaultRM = NULL;
@@ -257,6 +281,7 @@ ViStatus VISA_INST_GETID(ViSession instr, ViSession defaultRM, const char * IPad
     status = viOpenDefaultRM(&defaultRM);
     if (status < VI_SUCCESS) {
         QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Initializing VISA..."));
+        return status;
     }
     char head[256] ="TCPIP0::";
     char tail[] ="::INSTR";
@@ -265,10 +290,12 @@ ViStatus VISA_INST_GETID(ViSession instr, ViSession defaultRM, const char * IPad
     status = viOpen(defaultRM, (ViRsrc)head, VI_NULL, VI_NULL, &instr);
     if (status < VI_SUCCESS) {
         QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Opening Resource..."));
+        return status;
     }
     status = viSetAttribute(instr, VI_ATTR_TMO_VALUE, 5000);
     if (status < VI_SUCCESS) {
         QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Setting Attribute..."));
+        return status;
     }
     bufferCount = sprintf_s(buffer, sizeof(buffer), INSTID_g);
     status = viWrite(instr, (ViBuf)buffer, bufferCount, (ViPUInt32)&retCount);
@@ -401,21 +428,30 @@ ViStatus VISA_MEAS_GETBool(ViSession instr, uint32_t ch, const char * format, Vi
 }
 void MainWindow::handleOUTP(int id)
 {
+    qDebug() << "handleOUTP called with id:" << id;
+    
     if (instr != NULL)
     {
+        qDebug() << "Instrument connected, current palette:" << (OUTP_list[id]->palette() == p_OFF ? "OFF" : "ON");
+        
         if (OUTP_list[id]->palette() == p_OFF){
+            qDebug() << "Setting output" << id << "to ON";
             OUTP_list[id]->setPalette(p_ON);
             OUTP_list[id]->setText(QStringLiteral("输出"));
-            VISA_POWER_SETValueBool(instr, id, "ON");
+            ViStatus status = VISA_POWER_SETValueBool(instr, id, "ON");
+            qDebug() << "VISA_POWER_SETValueBool ON status:" << status;
         }
         else{
+            qDebug() << "Setting output" << id << "to OFF";
             OUTP_list[id]->setPalette(p_OFF);
             OUTP_list[id]->setText(QStringLiteral("输出"));
-            VISA_POWER_SETValueBool(instr, id, "OFF");
+            ViStatus status = VISA_POWER_SETValueBool(instr, id, "OFF");
+            qDebug() << "VISA_POWER_SETValueBool OFF status:" << status;
         }
     }
     else
     {
+        qDebug() << "Instrument not connected";
         QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("未连接仪器"));
     }
 }
@@ -539,9 +575,11 @@ void MainWindow::handleMeas(int id)
     VISA_MEAS_GETBool(instr, id, MEASALL_g, (ViBuf)buffer, MAX_CNT, &retCount);
     QString line(buffer);
     QStringList list = line.split(",");
-    MEASVolt_list[id]->setText(QString("%1").arg(list.at(0).toFloat(), 0, 'g',4));
-    MEASCurr_list[id]->setText(QString("%1").arg(list.at(1).toFloat(), 0, 'g',4));
-    MEASPwrr_list[id]->setText(QString("%1").arg(list.at(2).toFloat(), 0, 'g',4));
+    if (list.size() >= 3) {
+        MEASVolt_list[id]->setText(QString("%1").arg(list.at(0).toFloat(), 0, 'g',4));
+        MEASCurr_list[id]->setText(QString("%1").arg(list.at(1).toFloat(), 0, 'g',4));
+        MEASPwrr_list[id]->setText(QString("%1").arg(list.at(2).toFloat(), 0, 'g',4));
+    }
 }
 void MainWindow::on_SCANLAN_clicked()
 {
@@ -578,20 +616,50 @@ void MainWindow::processData()
         dataGram.resize(Udp_Recv->pendingDatagramSize());
         Udp_Recv->readDatagram(dataGram.data(),dataGram.size(),&TargetIP,&TargetPort);
 
+        // Debug output the datagram in hex format
+        // qDebug() << "Received datagram hex:" << dataGram.toHex();
+
+        // Filter out ICMP packets - they typically have all zeros at the end
+        // Valid instruments like 192.168.75.3 have non-zero data at the end
+        if (dataGram.size() < 20 || TargetPort != 111) {
+            continue; // Skip invalid packets
+        }
+        
+        // Check if it's a valid instrument response by looking for non-zero data at the end
+        // ICMP packets typically end with all zeros, while instrument responses have actual data
+        bool hasNonZeroAtEnd = false;
+        if (dataGram.size() >= 8) {
+            // Check last 8 bytes for non-zero content
+            for (int i = dataGram.size() - 8; i < dataGram.size(); i++) {
+                // qDebug() << QString("Byte %1: 0x%2").arg(i).arg((unsigned char)dataGram[i], 2, 16, QChar('0'));
+                if ((unsigned char)dataGram[i] != 0x00) {
+                    hasNonZeroAtEnd = true;
+                    break;
+                }
+            }
+        }
+        
+        if (!hasNonZeroAtEnd) {
+            continue; // Skip ICMP or packets with all zeros at end
+        }
+
         QString  TargetIPstr = TargetIP.toString();
         QByteArray TargetIPchba = TargetIPstr.toLatin1();
         char*  TargetIPch = TargetIPchba.data();
 
+        qDebug() << "Valid instrument response from:" << TargetIPch;
         VISA_INST_GETID(instr, defaultRM, TargetIPch, &INSTID);
         QStringList list = INSTID.split(",");
-        QString ModelNum = list[1];
-
-        if(ModelNum.contains("DP",Qt::CaseSensitive)) {
-            ui->comboBox_DP->addItem(TargetIP.toString() + "--" + ModelNum);
+        if (list.size() >= 2) {
+            QString ModelNum = list[1];
+            if(ModelNum.contains("DP",Qt::CaseSensitive)) {
+                ui->comboBox_DP->addItem(TargetIP.toString() + "--" + ModelNum);
+            }
+            else if(ModelNum.contains("SDG",Qt::CaseSensitive)) {
+                ui->comboBox_SDG->addItem(TargetIP.toString() + "--" + ModelNum);
+            }
         }
-        else if(ModelNum.contains("SDG",Qt::CaseSensitive)) {
-            ui->comboBox_SDG->addItem(TargetIP.toString() + "--" + ModelNum);
-        }
+        
     }
 }
 void MainWindow::on_CONNECTLAN_DP_clicked()
@@ -626,17 +694,18 @@ void MainWindow::on_CONNECTLAN_DP_clicked()
         IPaddrch = IPaddrba.data();
         char head[256] ="TCPIP0::";
         char tail[] ="::INSTR";
-        strcat(head,IPaddrch);
-        strcat(head,tail);
+        snprintf(head, sizeof(head), "TCPIP0::%s::INSTR", IPaddrch);
         /* NOTE: For simplicity, we will not show error checking */
         status = viOpen(defaultRM, (ViRsrc)head, VI_NULL, VI_NULL, &instr);
         if (status < VI_SUCCESS) {
             QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Opening Resource..."));
+            return;
         }
         /* Set the timeout for message-based communication */
         status = viSetAttribute(instr, VI_ATTR_TMO_VALUE, 5000);
         if (status < VI_SUCCESS) {
             QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Setting Attribute..."));
+            return;
         }
 
         for (int i = 0; i < OUTP_list.size(); ++i) {
@@ -680,6 +749,7 @@ void MainWindow::on_CONNECTLAN_SDG_clicked()
         status = viOpenDefaultRM(&defaultRM_SDG);
         if (status < VI_SUCCESS) {
             QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Initializing VISA..."));
+            return;
         }
         QString comboBoxSDG = ui->comboBox_SDG->currentText();
         QStringList list = comboBoxSDG.split("--");
@@ -695,11 +765,13 @@ void MainWindow::on_CONNECTLAN_SDG_clicked()
         status = viOpen(defaultRM_SDG, (ViRsrc)head, VI_NULL, VI_NULL, &instr_SDG);
         if (status < VI_SUCCESS) {
             QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Opening Resource..."));
+            return;
         }
         /* Set the timeout for message-based communication */
         status = viSetAttribute(instr_SDG, VI_ATTR_TMO_VALUE, 5000);
         if (status < VI_SUCCESS) {
             QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Setting Attribute..."));
+            return;
         }
 
     }
@@ -784,7 +856,7 @@ void MainWindow::handleSDGSendValue(int id)
         qDebug(buffer);
         for (int j=0; j<FileSize; j++)
         {
-            *(uint32_t*)(bufferPtr + bufferCount + j) = File_Buf[j];
+            *(bufferPtr + bufferCount + j) = File_Buf[j];  // 正确的字节复制
         }
         status = viWrite(instr_SDG, (ViBuf)buffer, bufferCount+FileSize, (ViPUInt32)&retCount);
 

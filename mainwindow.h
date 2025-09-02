@@ -83,13 +83,13 @@ private:
 
     QList<QTimer *> AllQTimer_list;
 
-    QSignalMapper * OUTP_Mapper;
-    QSignalMapper * SetParam_Mapper;
-    QSignalMapper * GetParam_Mapper;
-    QSignalMapper * VoltprotLabel_Mapper;
-    QSignalMapper * CurrprotLabel_Mapper;
-
-    QSignalMapper * QTimer_Mapper;
+    // QSignalMapper已被弃用，现在使用Lambda表达式
+    // QSignalMapper * OUTP_Mapper;
+    // QSignalMapper * SetParam_Mapper;
+    // QSignalMapper * GetParam_Mapper;
+    // QSignalMapper * VoltprotLabel_Mapper;
+    // QSignalMapper * CurrprotLabel_Mapper;
+    // QSignalMapper * QTimer_Mapper;
 
 /*********************************************************************/
     QList<QPushButton *> SDG_OUTP_list;
@@ -101,9 +101,10 @@ private:
     QList<QLineEdit *> SDG_Offset_list;
     QList<QLineEdit *> SDG_Phase_list;
 
-    QSignalMapper * SDG_OUTP_Mapper;
-    QSignalMapper * SDG_SendValue_Mapper;
-    QSignalMapper * SDG_ChooseFile_Mapper;
+    // SDG QSignalMapper已被弃用，现在使用Lambda表达式
+    // QSignalMapper * SDG_OUTP_Mapper;
+    // QSignalMapper * SDG_SendValue_Mapper;
+    // QSignalMapper * SDG_ChooseFile_Mapper;
 /*********************************************************************/
 
     QUdpSocket *Udp_Send;
