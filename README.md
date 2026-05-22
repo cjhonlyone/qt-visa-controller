@@ -2,7 +2,7 @@
 
 基于 Qt 的仪器控制软件，提供一个统一的桌面 GUI 来：
 
-- 控制 **Rigol DP 系列直流稳压源**（LAN，SCPI Raw Socket 5025 端口）
+- 控制 **Rigol DP 系列直流稳压源**（LAN，自实现 **VXI-11 (ONC RPC over TCP)** 协议，通过 portmap (UDP 111) 动态发现设备端口）
 - 控制 **SmartUSBHub 4 端口可编程 USB 集线器**（USB CDC 虚拟串口）
 
 > 历史版本依赖 NI-VISA / VXI-11。当前版本**完全脱离 NI-VISA**，仅依赖 Qt
@@ -93,7 +93,7 @@ Qt Creator 直接打开 `Visactl.pro` 也可以构建运行。
 
 ## 五、协议参考
 
-- DC Power：**SCPI Raw Socket（TCP 端口 5025）**，命令直接用 Rigol DP 手册中的 SCPI 字符串，例如 `:INST CH1`、`:VOLT 5`、`:MEAS:ALL? CH1`。
+- DC Power：**VXI-11 / TS-735-2 (ONC RPC over TCP)**，程序号 0x0607AF。客户端先用 portmap (UDP 111) GETPORT 拿到 VXI-11 Core 动态端口，再 `CREATE_LINK` → `DEVICE_WRITE` (*IDN? 等 SCPI 命令) → `DEVICE_READ` → `DESTROY_LINK`。命令字符串本身就是 Rigol DP 手册中的 SCPI，例如 `:INST CH1`、`:VOLT 5`、`:MEAS:ALL? CH1`。
 - USB Hub：见 `../SmartUSBHub.md`（项目仓库外的设备厂商规格）。简要：
   - 帧格式 `0x55 0x5A CMD DATA... SUM8`，6 或 7 字节。
   - 通道位掩码 CH1=0x01 / CH2=0x02 / CH3=0x04 / CH4=0x08。
@@ -107,7 +107,8 @@ Qt Creator 直接打开 `Visactl.pro` 也可以构建运行。
 Visactl.pro                 # qmake 工程
 main.cpp                    # 入口
 mainwindow.h / .cpp / .ui   # 主窗口（DC Power + USB Hub 两个 tab）
-scpiclient.h / .cpp         # SCPI 长连接客户端（QTcpSocket + 流式读取）
+scpiclient.h / .cpp         # —— 已删除 (旧 5025 Raw Socket 路径)
+vxi11client.h / .cpp        # 自实现 VXI-11 (ONC RPC over TCP) 客户端
 smartusbhubclient.h / .cpp  # SmartUSBHub 串口客户端（QSerialPort）
 ```
 

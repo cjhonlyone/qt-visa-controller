@@ -10,12 +10,12 @@ CONFIG += c++17
 SOURCES += \
     main.cpp \
     mainwindow.cpp \
-    scpiclient.cpp \
+    vxi11client.cpp \
     smartusbhubclient.cpp
 
 HEADERS += \
     mainwindow.h \
-    scpiclient.h \
+    vxi11client.h \
     smartusbhubclient.h
 
 FORMS += \

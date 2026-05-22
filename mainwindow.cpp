@@ -27,12 +27,9 @@ constexpr const char *kQryCurrProt     = ":CURR:PROT?\n";
 constexpr const char *kQryVoltProtStat = ":VOLT:PROT:STAT?\n";
 constexpr const char *kQryCurrProtStat = ":CURR:PROT:STAT?\n";
 constexpr const char *kQryMeasAll      = ":MEAS:ALL? CH%1\n";
-constexpr const char *kQryIdn          = "*IDN?\n";
 
-constexpr quint16 kScpiPort = 5025;
-constexpr int kProbeConnectTimeoutMs = 1000;
-constexpr int kProbeIdnTimeoutMs = 1500;
-constexpr int kScpiConnectTimeoutMs = 3000;
+constexpr int kVxi11ProbeConnectTimeoutMs = 1500;
+constexpr int kVxi11ConnectTimeoutMs = 3000;
 
 // SmartUSBHub VID/PID 占位：spec 未明确给出，若你的设备有固定 VID/PID，
 // 可在此修改，UI 会自动高亮匹配项。设为 0 表示不参与匹配。
@@ -386,23 +383,24 @@ void MainWindow::processData()
 {
     while (udpRecv_->hasPendingDatagrams()) {
         QHostAddress targetIp;
-        quint16 targetPort = 0;
+        quint16 srcPort = 0;
         QByteArray dg;
         dg.resize(static_cast<int>(udpRecv_->pendingDatagramSize()));
-        udpRecv_->readDatagram(dg.data(), dg.size(), &targetIp, &targetPort);
+        udpRecv_->readDatagram(dg.data(), dg.size(), &targetIp, &srcPort);
 
-        // 过滤 ICMP/无效响应：仅来自 portmap 端口 111 且尾部包含非零数据的视为有效。
-        if (dg.size() < 20 || targetPort != 111) continue;
-        bool hasNonZeroTail = false;
-        for (int i = dg.size() - 8; i < dg.size(); ++i) {
-            if (static_cast<unsigned char>(dg[i]) != 0x00) { hasNonZeroTail = true; break; }
-        }
-        if (!hasNonZeroTail) continue;
+        // 仅接受来自 portmap (111) 的 RPC 应答；最小 28 字节
+        // (xid+msg_type+reply_stat+verf{flav,len}+accept_stat+port = 28)。
+        // 末尾 4 字节即 VXI-11 Core 在该设备上动态分配的 TCP 端口。
+        if (dg.size() < 28 || srcPort != 111) continue;
+        const uchar *p = reinterpret_cast<const uchar *>(dg.constData()) + dg.size() - 4;
+        const quint32 port = (quint32(p[0]) << 24) | (quint32(p[1]) << 16) |
+                             (quint32(p[2]) << 8)  |  quint32(p[3]);
+        if (port == 0 || port > 0xFFFFu) continue;   // 0 = 服务未注册
 
         const QString ip = targetIp.toString();
         if (probedIps_.contains(ip)) continue;
         probedIps_.insert(ip);
-        probeQueue_.enqueue(ip);
+        probeQueue_.enqueue(qMakePair(ip, quint16(port)));
     }
     if (!probing_ && !probeQueue_.isEmpty()) {
         probing_ = true;
@@ -417,60 +415,34 @@ void MainWindow::probeNext()
         statusBar()->showMessage(QStringLiteral("扫描完成"), 2000);
         return;
     }
-    const QString ip = probeQueue_.dequeue();
+    const QPair<QString, quint16> entry = probeQueue_.dequeue();
+    const QString ip = entry.first;
+    const quint16 port = entry.second;
 
-    QTcpSocket *probe = new QTcpSocket(this);
-    QTimer *deadline = new QTimer(this);
-    deadline->setSingleShot(true);
-
-    auto cleanup = [this, probe, deadline]() {
-        deadline->stop();
-        deadline->deleteLater();
-        probe->disconnect();
-        probe->abort();
-        probe->deleteLater();
-        QTimer::singleShot(0, this, &MainWindow::probeNext);
-    };
-
-    auto fail = [this, ip, cleanup](const QString &reason) {
-        statusBar()->showMessage(QStringLiteral("%1: %2").arg(ip, reason), 1500);
-        cleanup();
-    };
-
-    connect(deadline, &QTimer::timeout, this, [fail]() { fail(QStringLiteral("5025 端口探测超时")); });
-
-    connect(probe, &QTcpSocket::connected, this, [probe]() {
-        probe->write(kQryIdn);
-    });
-
-#if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
-    connect(probe, &QAbstractSocket::errorOccurred, this,
-            [fail](QAbstractSocket::SocketError) { fail(QStringLiteral("5025 不可达")); });
-#else
-    connect(probe, QOverload<QAbstractSocket::SocketError>::of(&QAbstractSocket::error), this,
-            [fail](QAbstractSocket::SocketError) { fail(QStringLiteral("5025 不可达")); });
-#endif
-
-    QByteArray *acc = new QByteArray;
-    connect(probe, &QTcpSocket::readyRead, this, [this, ip, probe, acc, cleanup]() {
-        acc->append(probe->readAll());
-        if (!acc->contains('\n')) return;
-        const QString idn = QString::fromLatin1(*acc).trimmed();
-        delete acc;
-        const QStringList parts = idn.split(QChar(','));
+    // 同步探测：每个候选阻塞 ~1.5s。在主线程执行可以接受，因为 SCAN
+    // 已经异步地把所有 IP 收集到队列里再逐个验证。
+    Vxi11Client probe;
+    bool matched = false;
+    if (probe.connectToHost(ip, port, kVxi11ProbeConnectTimeoutMs)) {
+        const QByteArray idn = probe.query(QByteArrayLiteral("*IDN?\n"), 1500);
+        probe.disconnectFromHost();
+        const QString s = QString::fromLatin1(idn).trimmed();
+        const QStringList parts = s.split(QChar(','));
         if (parts.size() >= 2) {
             const QString model = parts[1].trimmed();
             if (model.contains(QStringLiteral("DP"), Qt::CaseSensitive)) {
-                ui->comboBox_DP->addItem(ip + QStringLiteral("--") + model);
-            } else {
+                // 在 itemData 中保存端口，避免后续连接时再做一次 portmap。
+                ui->comboBox_DP->addItem(ip + QStringLiteral("--") + model, int(port));
+                matched = true;
+            } else if (!model.isEmpty()) {
                 statusBar()->showMessage(QStringLiteral("%1: 非 DP 设备 (%2)").arg(ip, model), 1500);
             }
         }
-        cleanup();
-    });
-
-    deadline->start(kProbeConnectTimeoutMs + kProbeIdnTimeoutMs);
-    probe->connectToHost(ip, kScpiPort);
+    } else {
+        statusBar()->showMessage(QStringLiteral("%1:%2 探测失败").arg(ip).arg(port), 1500);
+    }
+    Q_UNUSED(matched);
+    QTimer::singleShot(0, this, &MainWindow::probeNext);
 }
 
 void MainWindow::on_CONNECTLAN_DP_clicked()
@@ -482,16 +454,22 @@ void MainWindow::on_CONNECTLAN_DP_clicked()
         }
         const QString item = ui->comboBox_DP->currentText();
         const QString ip = item.section(QStringLiteral("--"), 0, 0);
+        const quint16 port = quint16(ui->comboBox_DP->currentData().toInt());
+        if (port == 0) {
+            QMessageBox::information(this, QStringLiteral("提示"),
+                                     QStringLiteral("条目缺少端口信息，请重新扫描"));
+            return;
+        }
 
-        scpi_ = new ScpiClient(this);
-        connect(scpi_, &ScpiClient::disconnected, this, &MainWindow::onScpiDisconnected);
-        connect(scpi_, &ScpiClient::errorOccurred, this, [this](const QString &msg) {
-            qDebug() << "SCPI:" << msg;
+        scpi_ = new Vxi11Client(this);
+        connect(scpi_, &Vxi11Client::disconnected, this, &MainWindow::onScpiDisconnected);
+        connect(scpi_, &Vxi11Client::errorOccurred, this, [this](const QString &msg) {
+            qDebug() << "VXI-11:" << msg;
         });
 
-        if (!scpi_->connectToHost(ip, kScpiPort, kScpiConnectTimeoutMs)) {
+        if (!scpi_->connectToHost(ip, port, kVxi11ConnectTimeoutMs)) {
             QMessageBox::information(this, QStringLiteral("提示"),
-                                     QStringLiteral("连接 %1:%2 失败").arg(ip).arg(kScpiPort));
+                                     QStringLiteral("连接 %1:%2 失败").arg(ip).arg(port));
             scpi_->deleteLater();
             scpi_ = nullptr;
             return;

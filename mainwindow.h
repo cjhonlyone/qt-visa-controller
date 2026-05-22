@@ -14,7 +14,7 @@
 #include <QDebug>
 #include <stdint.h>
 
-#include "scpiclient.h"
+#include "vxi11client.h"
 #include "smartusbhubclient.h"
 
 QT_BEGIN_NAMESPACE
@@ -111,10 +111,11 @@ private:
     QUdpSocket *udpSend_ = nullptr;
     QUdpSocket *udpRecv_ = nullptr;
 
-    ScpiClient *scpi_ = nullptr;
+    Vxi11Client *scpi_ = nullptr;
 
-    // 异步发现：portmap 广播收到的 IP 入队，由 probeNext 状态机逐个用 *IDN? 探测。
-    QQueue<QString> probeQueue_;
+    // 异步发现：portmap 广播得到 IP + 动态端口（VXI-11 Core），
+    // probeNext 状态机逐个 CREATE_LINK + *IDN? 验证。
+    QQueue<QPair<QString, quint16>> probeQueue_;
     QSet<QString>   probedIps_;
     bool probing_ = false;
 
