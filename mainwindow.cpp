@@ -80,15 +80,9 @@ MainWindow::MainWindow(QWidget *parent)
     udpRecv_->bind(QHostAddress::AnyIPv4, 6111);
     connect(udpRecv_, &QUdpSocket::readyRead, this, &MainWindow::processData);
 
-    connect(ui->SCANLAN, &QPushButton::clicked, this, &MainWindow::on_SCANLAN_clicked);
-    connect(ui->CONNECTLAN_DP, &QPushButton::clicked, this, &MainWindow::on_CONNECTLAN_DP_clicked);
-
-    // USB Hub 连接信号槽（按 objectName 也能自动连接，这里显式连接更直观）。
-    connect(ui->REFRESHPORT_HUB, &QPushButton::clicked, this, &MainWindow::on_REFRESHPORT_HUB_clicked);
-    connect(ui->CONNECT_HUB, &QPushButton::clicked, this, &MainWindow::on_CONNECT_HUB_clicked);
-    connect(ui->REFRESHSTATE_HUB, &QPushButton::clicked, this, &MainWindow::on_REFRESHSTATE_HUB_clicked);
-    connect(ui->comboBox_HubMode, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &MainWindow::on_comboBox_HubMode_currentIndexChanged);
+    // 注意：以下按钮/控件的槽都采用 on_<objectName>_<signal>() 命名规范，
+    // setupUi() 会通过 QMetaObject::connectSlotsByName 自动连接一次。
+    // 如果再手动 connect 一次，每次点击会触发两次槽，导致连接后立即断开等问题。
 
     refreshHubPorts();
 }
