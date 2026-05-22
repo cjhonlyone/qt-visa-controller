@@ -8,3 +8,5 @@ qrc_*.cpp
 Makefile
 Visactl
 *.exe
+*.user
+build/
