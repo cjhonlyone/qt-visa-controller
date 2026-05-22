@@ -552,6 +552,169 @@
         </item>
        </layout>
       </widget>
+      <widget class="QWidget" name="tab_hub">
+       <attribute name="title">
+        <string>USB Hub</string>
+       </attribute>
+       <layout class="QGridLayout" name="gridLayoutHub">
+        <item row="0" column="0">
+         <widget class="QLabel" name="labelHubPort">
+          <property name="text">
+           <string>串口</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QComboBox" name="comboBox_HubPort"/>
+        </item>
+        <item row="0" column="2">
+         <widget class="QPushButton" name="REFRESHPORT_HUB">
+          <property name="text">
+           <string>刷新串口</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="3">
+         <widget class="QPushButton" name="CONNECT_HUB">
+          <property name="text">
+           <string>连接</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="4">
+         <widget class="QLabel" name="labelHubMode">
+          <property name="text">
+           <string>模式</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="5">
+         <widget class="QComboBox" name="comboBox_HubMode">
+          <item>
+           <property name="text">
+            <string>普通</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>互锁</string>
+           </property>
+          </item>
+         </widget>
+        </item>
+        <item row="0" column="6">
+         <widget class="QPushButton" name="REFRESHSTATE_HUB">
+          <property name="text">
+           <string>刷新状态</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0" colspan="7">
+         <widget class="QGroupBox" name="groupBox_HubChannels">
+          <property name="title">
+           <string>通道</string>
+          </property>
+          <layout class="QGridLayout" name="gridLayoutHubChannels">
+           <item row="0" column="0">
+            <widget class="QLabel" name="labelHubCh">
+             <property name="text">
+              <string>通道</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="QLabel" name="labelHubPower">
+             <property name="text">
+              <string>电源</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="2">
+            <widget class="QLabel" name="labelHubData">
+             <property name="text">
+              <string>数据</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="3">
+            <widget class="QLabel" name="labelHubVolt">
+             <property name="text">
+              <string>电压 (mV)</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="4">
+            <widget class="QLabel" name="labelHubCurr">
+             <property name="text">
+              <string>电流 (mA)</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="0">
+            <widget class="QLabel" name="HUB_CHLABEL_1"><property name="text"><string>CH1</string></property></widget>
+           </item>
+           <item row="1" column="1">
+            <widget class="QPushButton" name="HUB_POWER_1"><property name="text"><string>电源</string></property></widget>
+           </item>
+           <item row="1" column="2">
+            <widget class="QPushButton" name="HUB_DATA_1"><property name="text"><string>数据</string></property></widget>
+           </item>
+           <item row="1" column="3">
+            <widget class="QLineEdit" name="HUB_VOLT_1"><property name="readOnly"><bool>true</bool></property></widget>
+           </item>
+           <item row="1" column="4">
+            <widget class="QLineEdit" name="HUB_CURR_1"><property name="readOnly"><bool>true</bool></property></widget>
+           </item>
+           <item row="2" column="0">
+            <widget class="QLabel" name="HUB_CHLABEL_2"><property name="text"><string>CH2</string></property></widget>
+           </item>
+           <item row="2" column="1">
+            <widget class="QPushButton" name="HUB_POWER_2"><property name="text"><string>电源</string></property></widget>
+           </item>
+           <item row="2" column="2">
+            <widget class="QPushButton" name="HUB_DATA_2"><property name="text"><string>数据</string></property></widget>
+           </item>
+           <item row="2" column="3">
+            <widget class="QLineEdit" name="HUB_VOLT_2"><property name="readOnly"><bool>true</bool></property></widget>
+           </item>
+           <item row="2" column="4">
+            <widget class="QLineEdit" name="HUB_CURR_2"><property name="readOnly"><bool>true</bool></property></widget>
+           </item>
+           <item row="3" column="0">
+            <widget class="QLabel" name="HUB_CHLABEL_3"><property name="text"><string>CH3</string></property></widget>
+           </item>
+           <item row="3" column="1">
+            <widget class="QPushButton" name="HUB_POWER_3"><property name="text"><string>电源</string></property></widget>
+           </item>
+           <item row="3" column="2">
+            <widget class="QPushButton" name="HUB_DATA_3"><property name="text"><string>数据</string></property></widget>
+           </item>
+           <item row="3" column="3">
+            <widget class="QLineEdit" name="HUB_VOLT_3"><property name="readOnly"><bool>true</bool></property></widget>
+           </item>
+           <item row="3" column="4">
+            <widget class="QLineEdit" name="HUB_CURR_3"><property name="readOnly"><bool>true</bool></property></widget>
+           </item>
+           <item row="4" column="0">
+            <widget class="QLabel" name="HUB_CHLABEL_4"><property name="text"><string>CH4</string></property></widget>
+           </item>
+           <item row="4" column="1">
+            <widget class="QPushButton" name="HUB_POWER_4"><property name="text"><string>电源</string></property></widget>
+           </item>
+           <item row="4" column="2">
+            <widget class="QPushButton" name="HUB_DATA_4"><property name="text"><string>数据</string></property></widget>
+           </item>
+           <item row="4" column="3">
+            <widget class="QLineEdit" name="HUB_VOLT_4"><property name="readOnly"><bool>true</bool></property></widget>
+           </item>
+           <item row="4" column="4">
+            <widget class="QLineEdit" name="HUB_CURR_4"><property name="readOnly"><bool>true</bool></property></widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+       </layout>
+      </widget>
      </widget>
     </item>
    </layout>

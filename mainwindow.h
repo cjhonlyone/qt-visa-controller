@@ -15,6 +15,7 @@
 #include <stdint.h>
 
 #include "scpiclient.h"
+#include "smartusbhubclient.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -46,6 +47,17 @@ struct PowerChannel
     QTimer *timer = nullptr;
 };
 
+// SmartUSBHub 单通道 UI 部件集合。
+struct UsbHubChannel
+{
+    int idx = 0;             // 0..3
+    quint8 mask = 0;         // 0x01 / 0x02 / 0x04 / 0x08
+    QPushButton *power = nullptr;
+    QPushButton *data = nullptr;
+    QLineEdit *voltage = nullptr;
+    QLineEdit *current = nullptr;
+};
+
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -68,8 +80,22 @@ private slots:
     void probeNext();
     void onScpiDisconnected();
 
+    // ===== USB Hub =====
+    void on_REFRESHPORT_HUB_clicked();
+    void on_CONNECT_HUB_clicked();
+    void on_REFRESHSTATE_HUB_clicked();
+    void on_comboBox_HubMode_currentIndexChanged(int idx);
+    void handleHubPower(int i);
+    void handleHubData(int i);
+    void handleHubMeasure();
+    void onHubDisconnected();
+
 private:
     void setupChannels();
+    void setupHubChannels();
+    void refreshHubPorts();
+    void hubSetUiConnected(bool connected);
+    void hubRefreshFullState();
     void writeChannelCommand(int channelIdx, const char *fmt, double value);
     void writeChannelBool(int channelIdx, const char *fmt, bool on);
     QByteArray queryChannel(int channelIdx, const char *fmt);
@@ -91,6 +117,11 @@ private:
     QQueue<QString> probeQueue_;
     QSet<QString>   probedIps_;
     bool probing_ = false;
+
+    // ===== USB Hub =====
+    SmartUsbHubClient *hub_ = nullptr;
+    QVector<UsbHubChannel> hubChannels_;
+    QTimer *hubMeasureTimer_ = nullptr;
 };
 
 #endif // MAINWINDOW_H

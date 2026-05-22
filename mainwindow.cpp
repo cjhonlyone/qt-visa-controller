@@ -5,6 +5,7 @@
 #include <QStringList>
 #include <QTcpSocket>
 #include <QTimer>
+#include <QSerialPortInfo>
 
 namespace {
 
@@ -32,6 +33,12 @@ constexpr quint16 kScpiPort = 5025;
 constexpr int kProbeConnectTimeoutMs = 1000;
 constexpr int kProbeIdnTimeoutMs = 1500;
 constexpr int kScpiConnectTimeoutMs = 3000;
+
+// SmartUSBHub VID/PID 占位：spec 未明确给出，若你的设备有固定 VID/PID，
+// 可在此修改，UI 会自动高亮匹配项。设为 0 表示不参与匹配。
+constexpr quint16 kHubVid = 0x0000;
+constexpr quint16 kHubPid = 0x0000;
+constexpr int kHubMeasurePeriodMs = 500;
 
 QByteArray fmtCh(const char *tmpl, int ch1)
 {
@@ -68,6 +75,7 @@ MainWindow::MainWindow(QWidget *parent)
     p_OFF.setColor(QPalette::Button, QColor("lightgray"));
 
     setupChannels();
+    setupHubChannels();
 
     udpSend_ = new QUdpSocket(this);
     udpSend_->bind(QHostAddress::Any, 6111, QUdpSocket::ReuseAddressHint);
@@ -77,12 +85,24 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(ui->SCANLAN, &QPushButton::clicked, this, &MainWindow::on_SCANLAN_clicked);
     connect(ui->CONNECTLAN_DP, &QPushButton::clicked, this, &MainWindow::on_CONNECTLAN_DP_clicked);
+
+    // USB Hub 连接信号槽（按 objectName 也能自动连接，这里显式连接更直观）。
+    connect(ui->REFRESHPORT_HUB, &QPushButton::clicked, this, &MainWindow::on_REFRESHPORT_HUB_clicked);
+    connect(ui->CONNECT_HUB, &QPushButton::clicked, this, &MainWindow::on_CONNECT_HUB_clicked);
+    connect(ui->REFRESHSTATE_HUB, &QPushButton::clicked, this, &MainWindow::on_REFRESHSTATE_HUB_clicked);
+    connect(ui->comboBox_HubMode, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &MainWindow::on_comboBox_HubMode_currentIndexChanged);
+
+    refreshHubPorts();
 }
 
 MainWindow::~MainWindow()
 {
     if (scpi_) {
         scpi_->disconnectFromHost();
+    }
+    if (hub_) {
+        hub_->close();
     }
     delete ui;
 }
@@ -512,5 +532,225 @@ void MainWindow::onScpiDisconnected()
         ui->CONNECTLAN_DP->setText(QStringLiteral("连接"));
         ui->comboBox_DP->setEnabled(true);
         statusBar()->showMessage(QStringLiteral("仪器连接已断开"), 3000);
+    }
+}
+
+// ============================================================
+// SmartUSBHub
+// ============================================================
+
+void MainWindow::setupHubChannels()
+{
+    hubChannels_.reserve(4);
+    static const quint8 masks[4] = {0x01, 0x02, 0x04, 0x08};
+    for (int i = 1; i <= 4; ++i) {
+        UsbHubChannel uc;
+        uc.idx = i - 1;
+        uc.mask = masks[i - 1];
+        uc.power   = ui->tab_hub->findChild<QPushButton *>(QStringLiteral("HUB_POWER_%1").arg(i));
+        uc.data    = ui->tab_hub->findChild<QPushButton *>(QStringLiteral("HUB_DATA_%1").arg(i));
+        uc.voltage = ui->tab_hub->findChild<QLineEdit *>(QStringLiteral("HUB_VOLT_%1").arg(i));
+        uc.current = ui->tab_hub->findChild<QLineEdit *>(QStringLiteral("HUB_CURR_%1").arg(i));
+        hubChannels_.append(uc);
+    }
+
+    for (int i = 0; i < hubChannels_.size(); ++i) {
+        UsbHubChannel &c = hubChannels_[i];
+        if (c.power) {
+            c.power->setAutoFillBackground(true);
+            c.power->setFlat(true);
+            c.power->setPalette(p_OFF);
+            connect(c.power, &QPushButton::clicked, this, [this, i]() { handleHubPower(i); });
+        }
+        if (c.data) {
+            c.data->setAutoFillBackground(true);
+            c.data->setFlat(true);
+            c.data->setPalette(p_OFF);
+            connect(c.data, &QPushButton::clicked, this, [this, i]() { handleHubData(i); });
+        }
+    }
+
+    hubMeasureTimer_ = new QTimer(this);
+    hubMeasureTimer_->setInterval(kHubMeasurePeriodMs);
+    connect(hubMeasureTimer_, &QTimer::timeout, this, &MainWindow::handleHubMeasure);
+
+    hubSetUiConnected(false);
+}
+
+void MainWindow::refreshHubPorts()
+{
+    ui->comboBox_HubPort->clear();
+    int matchIdx = -1;
+    int row = 0;
+    const auto ports = QSerialPortInfo::availablePorts();
+    for (const QSerialPortInfo &info : ports) {
+        QString label = info.portName();
+        const bool vidPidValid = info.hasVendorIdentifier() && info.hasProductIdentifier();
+        const bool isHub = kHubVid != 0 && kHubPid != 0 && vidPidValid &&
+                           info.vendorIdentifier() == kHubVid &&
+                           info.productIdentifier() == kHubPid;
+        if (!info.description().isEmpty()) {
+            label += QStringLiteral(" (") + info.description() + QStringLiteral(")");
+        }
+        if (isHub) {
+            label += QStringLiteral(" [SmartUSBHub]");
+            if (matchIdx < 0) matchIdx = row;
+        }
+        ui->comboBox_HubPort->addItem(label, info.portName());
+        ++row;
+    }
+    if (matchIdx >= 0) ui->comboBox_HubPort->setCurrentIndex(matchIdx);
+}
+
+void MainWindow::on_REFRESHPORT_HUB_clicked()
+{
+    refreshHubPorts();
+}
+
+void MainWindow::hubSetUiConnected(bool connected)
+{
+    ui->CONNECT_HUB->setText(connected ? QStringLiteral("断开") : QStringLiteral("连接"));
+    ui->comboBox_HubPort->setEnabled(!connected);
+    ui->REFRESHPORT_HUB->setEnabled(!connected);
+    ui->REFRESHSTATE_HUB->setEnabled(connected);
+    ui->comboBox_HubMode->setEnabled(connected);
+    for (UsbHubChannel &c : hubChannels_) {
+        if (c.power) c.power->setEnabled(connected);
+        if (c.data)  c.data->setEnabled(connected);
+        if (!connected) {
+            if (c.power) c.power->setPalette(p_OFF);
+            if (c.data)  c.data->setPalette(p_OFF);
+            if (c.voltage) c.voltage->clear();
+            if (c.current) c.current->clear();
+        }
+    }
+}
+
+void MainWindow::on_CONNECT_HUB_clicked()
+{
+    if (ui->CONNECT_HUB->text() == QStringLiteral("连接")) {
+        if (ui->comboBox_HubPort->count() == 0) {
+            QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("未发现可用串口"));
+            return;
+        }
+        const QString portName = ui->comboBox_HubPort->currentData().toString();
+        if (!hub_) {
+            hub_ = new SmartUsbHubClient(this);
+            connect(hub_, &SmartUsbHubClient::disconnected, this, &MainWindow::onHubDisconnected);
+            connect(hub_, &SmartUsbHubClient::errorOccurred, this, [this](const QString &msg) {
+                qDebug() << "Hub:" << msg;
+            });
+        }
+        if (!hub_->open(portName)) {
+            QMessageBox::warning(this, QStringLiteral("提示"),
+                                 QStringLiteral("打开 %1 失败: %2").arg(portName, hub_->lastError()));
+            return;
+        }
+        hubSetUiConnected(true);
+        hubRefreshFullState();
+        hubMeasureTimer_->start();
+    } else {
+        if (hubMeasureTimer_) hubMeasureTimer_->stop();
+        if (hub_) hub_->close();
+        hubSetUiConnected(false);
+    }
+}
+
+void MainWindow::onHubDisconnected()
+{
+    if (hubMeasureTimer_) hubMeasureTimer_->stop();
+    hubSetUiConnected(false);
+    statusBar()->showMessage(QStringLiteral("USB Hub 已断开"), 3000);
+}
+
+void MainWindow::hubRefreshFullState()
+{
+    if (!hub_ || !hub_->isOpen()) return;
+
+    SmartUsbHubClient::WorkMode mode;
+    if (hub_->getMode(&mode)) {
+        QSignalBlocker blocker(ui->comboBox_HubMode);
+        ui->comboBox_HubMode->setCurrentIndex(mode == SmartUsbHubClient::ModeInterlock ? 1 : 0);
+    }
+
+    for (UsbHubChannel &c : hubChannels_) {
+        bool on = false;
+        if (hub_->getPower(c.mask, &on) && c.power) {
+            c.power->setPalette(on ? p_ON : p_OFF);
+        }
+        if (hub_->getData(c.mask, &on) && c.data) {
+            c.data->setPalette(on ? p_ON : p_OFF);
+        }
+    }
+}
+
+void MainWindow::on_REFRESHSTATE_HUB_clicked()
+{
+    hubRefreshFullState();
+}
+
+void MainWindow::on_comboBox_HubMode_currentIndexChanged(int idx)
+{
+    if (!hub_ || !hub_->isOpen()) return;
+    const auto mode = (idx == 1) ? SmartUsbHubClient::ModeInterlock
+                                 : SmartUsbHubClient::ModeNormal;
+    hub_->setMode(mode);
+    // 模式切换后，互锁会强制改通道状态，同步一次。
+    hubRefreshFullState();
+}
+
+void MainWindow::handleHubPower(int i)
+{
+    if (!hub_ || !hub_->isOpen()) return;
+    UsbHubChannel &c = hubChannels_[i];
+    const bool turnOn = (c.power->palette() == p_OFF);
+    bool ok = false;
+    // 互锁模式下必须用 CMD 0x02；这里通过当前模式决定。
+    if (ui->comboBox_HubMode->currentIndex() == 1 && turnOn) {
+        ok = hub_->setPowerInterlock(c.mask);
+    } else {
+        ok = hub_->setPower(c.mask, turnOn);
+    }
+    if (!ok) {
+        statusBar()->showMessage(QStringLiteral("CH%1 电源切换失败").arg(i + 1), 2000);
+    }
+    // 互锁模式会影响其他通道，整体回读最稳。
+    if (ui->comboBox_HubMode->currentIndex() == 1) {
+        hubRefreshFullState();
+    } else {
+        bool state = false;
+        if (hub_->getPower(c.mask, &state)) {
+            c.power->setPalette(state ? p_ON : p_OFF);
+        }
+    }
+}
+
+void MainWindow::handleHubData(int i)
+{
+    if (!hub_ || !hub_->isOpen()) return;
+    UsbHubChannel &c = hubChannels_[i];
+    const bool turnOn = (c.data->palette() == p_OFF);
+    if (!hub_->setData(c.mask, turnOn)) {
+        statusBar()->showMessage(QStringLiteral("CH%1 数据切换失败").arg(i + 1), 2000);
+        return;
+    }
+    bool state = false;
+    if (hub_->getData(c.mask, &state)) {
+        c.data->setPalette(state ? p_ON : p_OFF);
+    }
+}
+
+void MainWindow::handleHubMeasure()
+{
+    if (!hub_ || !hub_->isOpen()) return;
+    for (UsbHubChannel &c : hubChannels_) {
+        quint16 mv = 0;
+        quint16 ma = 0;
+        if (hub_->getVoltageMv(c.mask, &mv) && c.voltage) {
+            c.voltage->setText(QString::number(mv));
+        }
+        if (hub_->getCurrentMa(c.mask, &ma) && c.current) {
+            c.current->setText(QString::number(ma));
+        }
     }
 }
