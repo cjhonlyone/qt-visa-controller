@@ -1,22 +1,50 @@
-﻿#ifndef MAINWINDOW_H
+#ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
 #include <QMainWindow>
 #include <QPushButton>
 #include <QLineEdit>
-#include <QSignalMapper>
 #include <QTimer>
 #include <QtNetwork/QUdpSocket>
 #include <QtNetwork/QNetworkInterface>
-#include <QFileDialog>
-
+#include <QtNetwork/QTcpSocket>
+#include <QVector>
+#include <QQueue>
+#include <QSet>
 #include <QDebug>
-#include "visa.h"
-#include "stdint.h"
+#include <stdint.h>
+
+#include "scpiclient.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
+
+// 一个稳压源通道在 UI 上的全部部件 + 周期测量定时器。
+// 全部使用 parent = MainWindow 的裸指针，PowerChannel 本身可安全拷贝/搬移，
+// 配合 channels_.reserve() 防止隐式重分配丢失槽连接。
+struct PowerChannel
+{
+    int idx = 0;
+    QPushButton *outp = nullptr;
+    QPushButton *setParam = nullptr;
+    QPushButton *getParam = nullptr;
+    QPushButton *voltLabel = nullptr;
+    QPushButton *currLabel = nullptr;
+    QPushButton *voltProtLabel = nullptr;
+    QPushButton *currProtLabel = nullptr;
+    QLineEdit *volt = nullptr;
+    QLineEdit *curr = nullptr;
+    QLineEdit *voltProt = nullptr;
+    QLineEdit *currProt = nullptr;
+    QPushButton *measVoltLabel = nullptr;
+    QPushButton *measCurrLabel = nullptr;
+    QPushButton *measPwrLabel = nullptr;
+    QLineEdit *measVolt = nullptr;
+    QLineEdit *measCurr = nullptr;
+    QLineEdit *measPwr = nullptr;
+    QTimer *timer = nullptr;
+};
 
 class MainWindow : public QMainWindow
 {
@@ -26,9 +54,6 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
-    QUdpSocket *UDP_send;
-    QUdpSocket *UDP_recv;
-
 private slots:
     void handleOUTP(int id);
     void handleSetParam(int id);
@@ -37,77 +62,35 @@ private slots:
     void handleCurrprotLabel(int id);
     void handleMeas(int id);
 
-    void handleSDGOUTP(int id);
-    void handleSDGSendValue(int id);
-    void handleSDGChooseFile(int id);
-
     void on_SCANLAN_clicked();
-    void processData();
     void on_CONNECTLAN_DP_clicked();
-    void on_CONNECTLAN_SDG_clicked();
+    void processData();
+    void probeNext();
+    void onScpiDisconnected();
 
 private:
+    void setupChannels();
+    void writeChannelCommand(int channelIdx, const char *fmt, double value);
+    void writeChannelBool(int channelIdx, const char *fmt, bool on);
+    QByteArray queryChannel(int channelIdx, const char *fmt);
+    bool parseBool(const QByteArray &raw) const;
+
     Ui::MainWindow *ui;
-
-    char instrDescriptor[VI_FIND_BUFLEN];
-    ViUInt32 numInstrs;
-    ViFindList findList;
-
-    ViSession defaultRM, instr, defaultRM_SDG, instr_SDG;
-    ViStatus status;
 
     QPalette p_ON;
     QPalette p_OFF;
 
-    QList<QPushButton *> OUTP_list;
-    QList<QPushButton *> SetParam_list;
-    QList<QPushButton *> GetParam_list;
-    QList<QPushButton *> VoltLabel_list;
-    QList<QPushButton *> CurrLabel_list;
-    QList<QPushButton *> VoltprotLabel_list;
-    QList<QPushButton *> CurrprotLabel_list;
-    QList<QLineEdit *> Volt_list;
-    QList<QLineEdit *> Curr_list;
-    QList<QLineEdit *> Voltprot_list;
-    QList<QLineEdit *> Currprot_list;
+    QVector<PowerChannel> channels_;
 
-    QList<QPushButton *> MEASVoltLabel_list;
-    QList<QPushButton *> MEASCurrLabel_list;
-    QList<QPushButton *> MEASPwrrLabel_list;
-    QList<QLineEdit *> MEASVolt_list;
-    QList<QLineEdit *> MEASCurr_list;
-    QList<QLineEdit *> MEASPwrr_list;
+    QUdpSocket *udpSend_ = nullptr;
+    QUdpSocket *udpRecv_ = nullptr;
 
-    QList<QPushButton *> AllQPushButton_list;
-    QList<QLineEdit *> AllQLineEdit_list;
+    ScpiClient *scpi_ = nullptr;
 
-    QList<QTimer *> AllQTimer_list;
-
-    // QSignalMapper已被弃用，现在使用Lambda表达式
-    // QSignalMapper * OUTP_Mapper;
-    // QSignalMapper * SetParam_Mapper;
-    // QSignalMapper * GetParam_Mapper;
-    // QSignalMapper * VoltprotLabel_Mapper;
-    // QSignalMapper * CurrprotLabel_Mapper;
-    // QSignalMapper * QTimer_Mapper;
-
-/*********************************************************************/
-    QList<QPushButton *> SDG_OUTP_list;
-    QList<QPushButton *> SDG_SendValue_list;
-    QList<QPushButton *> SDG_ChooseFile_list;
-    QList<QLineEdit *> SDG_FilePath_list;
-    QList<QLineEdit *> SDG_SampleRate_list;
-    QList<QLineEdit *> SDG_Amplitude_list;
-    QList<QLineEdit *> SDG_Offset_list;
-    QList<QLineEdit *> SDG_Phase_list;
-
-    // SDG QSignalMapper已被弃用，现在使用Lambda表达式
-    // QSignalMapper * SDG_OUTP_Mapper;
-    // QSignalMapper * SDG_SendValue_Mapper;
-    // QSignalMapper * SDG_ChooseFile_Mapper;
-/*********************************************************************/
-
-    QUdpSocket *Udp_Send;
-    QUdpSocket *Udp_Recv;
+    // 异步发现：portmap 广播收到的 IP 入队，由 probeNext 状态机逐个用 *IDN? 探测。
+    QQueue<QString> probeQueue_;
+    QSet<QString>   probedIps_;
+    bool probing_ = false;
 };
+
 #endif // MAINWINDOW_H

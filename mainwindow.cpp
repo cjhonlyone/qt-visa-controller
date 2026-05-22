@@ -1,9 +1,60 @@
-﻿#include "mainwindow.h"
+#include "mainwindow.h"
 #include "ui_mainwindow.h"
 
-#include "qmessagebox.h"
+#include <QMessageBox>
+#include <QStringList>
+#include <QTcpSocket>
+#include <QTimer>
 
-#define MAX_CNT 256
+namespace {
+
+// SCPI 命令模板 —— Rigol DP 系列稳压源。
+constexpr const char *kCmdInstSet      = ":INST CH%1\n";
+constexpr const char *kCmdOutpSet      = ":OUTP CH%1,%2\n";
+constexpr const char *kCmdVoltSet      = ":VOLT %1\n";
+constexpr const char *kCmdCurrSet      = ":CURR %1\n";
+constexpr const char *kCmdVoltProtSet  = ":VOLT:PROT %1\n";
+constexpr const char *kCmdCurrProtSet  = ":CURR:PROT %1\n";
+constexpr const char *kCmdVoltProtStat = ":VOLT:PROT:STAT %1\n";
+constexpr const char *kCmdCurrProtStat = ":CURR:PROT:STAT %1\n";
+
+constexpr const char *kQryOutp         = ":OUTP? CH%1\n";
+constexpr const char *kQryVolt         = ":VOLT?\n";
+constexpr const char *kQryCurr         = ":CURR?\n";
+constexpr const char *kQryVoltProt     = ":VOLT:PROT?\n";
+constexpr const char *kQryCurrProt     = ":CURR:PROT?\n";
+constexpr const char *kQryVoltProtStat = ":VOLT:PROT:STAT?\n";
+constexpr const char *kQryCurrProtStat = ":CURR:PROT:STAT?\n";
+constexpr const char *kQryMeasAll      = ":MEAS:ALL? CH%1\n";
+constexpr const char *kQryIdn          = "*IDN?\n";
+
+constexpr quint16 kScpiPort = 5025;
+constexpr int kProbeConnectTimeoutMs = 1000;
+constexpr int kProbeIdnTimeoutMs = 1500;
+constexpr int kScpiConnectTimeoutMs = 3000;
+
+QByteArray fmtCh(const char *tmpl, int ch1)
+{
+    return QString(QLatin1String(tmpl)).arg(ch1).toLatin1();
+}
+
+QByteArray fmtChStr(const char *tmpl, int ch1, const QString &v)
+{
+    return QString(QLatin1String(tmpl)).arg(ch1).arg(v).toLatin1();
+}
+
+QByteArray fmtVal(const char *tmpl, double v)
+{
+    // 保持原行为：电压电流用 2 位小数。
+    return QString(QLatin1String(tmpl)).arg(v, 0, 'f', 2).toLatin1();
+}
+
+QByteArray fmtStr(const char *tmpl, const QString &v)
+{
+    return QString(QLatin1String(tmpl)).arg(v).toLatin1();
+}
+
+} // namespace
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -13,872 +64,453 @@ MainWindow::MainWindow(QWidget *parent)
 
     p_ON = QPalette();
     p_OFF = QPalette();
-    p_ON.setColor(QPalette::Button,QColor("green"));
-    p_OFF.setColor(QPalette::Button,QColor("lightgray"));
+    p_ON.setColor(QPalette::Button, QColor("green"));
+    p_OFF.setColor(QPalette::Button, QColor("lightgray"));
 
-    AllQPushButton_list = ui->tab->findChildren<QPushButton *>();
-    AllQLineEdit_list = ui->tab->findChildren<QLineEdit *>();
+    setupChannels();
 
-    for (int i=1;i<=3;i++)
-    {
-        QPushButton* outp_btn = ui->tab->findChild<QPushButton *>(QString("OUTP_%1").arg(i));
-        if (outp_btn) {
-            OUTP_list.append(outp_btn);
-        } else {
-            OUTP_list.append(nullptr); // 保持索引一致性
-        }
-        
-        QPushButton* setparam_btn = ui->tab->findChild<QPushButton *>(QString("SetParam_%1").arg(i));
-        SetParam_list.append(setparam_btn);
-        if (!setparam_btn) qDebug() << "ERROR: Button SetParam_" << i << "not found!";
-        
-        QPushButton* getparam_btn = ui->tab->findChild<QPushButton *>(QString("GetParam_%1").arg(i));
-        GetParam_list.append(getparam_btn);
-        if (!getparam_btn) qDebug() << "ERROR: Button GetParam_" << i << "not found!";
-        
-        VoltLabel_list.append(ui->tab->findChild<QPushButton *>(QString("VoltLabel_%1").arg(i)));
-        CurrLabel_list.append(ui->tab->findChild<QPushButton *>(QString("CurrLabel_%1").arg(i)));
-        VoltprotLabel_list.append(ui->tab->findChild<QPushButton *>(QString("VoltprotLabel_%1").arg(i)));
-        CurrprotLabel_list.append(ui->tab->findChild<QPushButton *>(QString("CurrprotLabel_%1").arg(i)));
+    udpSend_ = new QUdpSocket(this);
+    udpSend_->bind(QHostAddress::Any, 6111, QUdpSocket::ReuseAddressHint);
+    udpRecv_ = new QUdpSocket(this);
+    udpRecv_->bind(QHostAddress::AnyIPv4, 6111);
+    connect(udpRecv_, &QUdpSocket::readyRead, this, &MainWindow::processData);
 
-        MEASVoltLabel_list.append(ui->tab->findChild<QPushButton *>(QString("MEASVoltLabel_%1").arg(i)));
-        MEASCurrLabel_list.append(ui->tab->findChild<QPushButton *>(QString("MEASCurrLabel_%1").arg(i)));
-        MEASPwrrLabel_list.append(ui->tab->findChild<QPushButton *>(QString("MEASPwrrLabel_%1").arg(i)));
-
-        Volt_list.append(ui->tab->findChild<QLineEdit *>(QString("Volt_%1").arg(i)));
-        Curr_list.append(ui->tab->findChild<QLineEdit *>(QString("Curr_%1").arg(i)));
-        Voltprot_list.append(ui->tab->findChild<QLineEdit *>(QString("Voltprot_%1").arg(i)));
-        Currprot_list.append(ui->tab->findChild<QLineEdit *>(QString("Currprot_%1").arg(i)));
-
-        MEASVolt_list.append(ui->tab->findChild<QLineEdit *>(QString("MEASVolt_%1").arg(i)));
-        MEASCurr_list.append(ui->tab->findChild<QLineEdit *>(QString("MEASCurr_%1").arg(i)));
-        MEASPwrr_list.append(ui->tab->findChild<QLineEdit *>(QString("MEASPwrr_%1").arg(i)));
-    }
-
-    for (int i = 0; i < OUTP_list.size(); i++){
-        OUTP_list[i]->setAutoFillBackground(true);
-        OUTP_list[i]->setFlat(true);
-        OUTP_list[i]->setPalette(p_OFF);
-
-        VoltprotLabel_list[i]->setAutoFillBackground(true);
-        VoltprotLabel_list[i]->setFlat(true);
-        VoltprotLabel_list[i]->setPalette(p_OFF);
-
-        CurrprotLabel_list[i]->setAutoFillBackground(true);
-        CurrprotLabel_list[i]->setFlat(true);
-        CurrprotLabel_list[i]->setPalette(p_OFF);
-
-        VoltLabel_list[i]->setDisabled(true);
-        CurrLabel_list[i]->setDisabled(true);
-
-        OUTP_list[i]->setText(QStringLiteral("输出"));
-        SetParam_list[i]->setText(QStringLiteral("设置参数"));
-        GetParam_list[i]->setText(QStringLiteral("读取参数"));
-
-        VoltLabel_list[i]->setText(QStringLiteral("电压(V)"));
-        CurrLabel_list[i]->setText(QStringLiteral("电流(A)"));
-        VoltprotLabel_list[i]->setText(QStringLiteral("限压(V)"));
-        CurrprotLabel_list[i]->setText(QStringLiteral("限流(A)"));
-
-        OUTP_list[i]->setMinimumWidth(80);
-        SetParam_list[i]->setMinimumWidth(80);
-        GetParam_list[i]->setMinimumWidth(80);
-
-        VoltLabel_list[i]->setMinimumWidth(80);
-        CurrLabel_list[i]->setMinimumWidth(80);
-        VoltprotLabel_list[i]->setMinimumWidth(80);
-        CurrprotLabel_list[i]->setMinimumWidth(80);
-
-        Volt_list[i]->setMinimumWidth(80);
-        Curr_list[i]->setMinimumWidth(80);
-        Voltprot_list[i]->setMinimumWidth(80);
-        Currprot_list[i]->setMinimumWidth(80);
-
-        Volt_list[i]->setText("5");
-        Curr_list[i]->setText("1.5");
-
-        Voltprot_list[i]->setText("6");
-        Currprot_list[i]->setText("2");
-
-
-        MEASVoltLabel_list[i]->setDisabled(true);
-        MEASCurrLabel_list[i]->setDisabled(true);
-        MEASPwrrLabel_list[i]->setDisabled(true);
-
-        MEASVolt_list[i]->setDisabled(true);
-        MEASCurr_list[i]->setDisabled(true);
-        MEASPwrr_list[i]->setDisabled(true);
-
-        MEASVoltLabel_list[i]->setText(QStringLiteral("电压(V)"));
-        MEASCurrLabel_list[i]->setText(QStringLiteral("电流(A)"));
-        MEASPwrrLabel_list[i]->setText(QStringLiteral("功率(W)"));
-
-        MEASPwrr_list[i]->setMinimumWidth(80);
-        MEASCurr_list[i]->setMinimumWidth(80);
-        MEASVolt_list[i]->setMinimumWidth(80);
-
-        AllQTimer_list.append(new QTimer(this));
-    }
-
-    // 使用现代Lambda表达式替代QSignalMapper
-    for (int i = 0; i < OUTP_list.size(); ++i) {
-
-        // 检查按钮是否有效
-        if (OUTP_list[i]) {
-            connect(OUTP_list[i], &QPushButton::clicked, this, [this, i]() {
-                handleOUTP(i);
-            });
-        }
-        
-        if (SetParam_list[i]) {
-            connect(SetParam_list[i], &QPushButton::clicked, this, [this, i]() {
-                handleSetParam(i);
-            });
-        }
-        
-        if (GetParam_list[i]) {
-            connect(GetParam_list[i], &QPushButton::clicked, this, [this, i]() {
-                handleGetParam(i);
-            });
-        }
-        
-        if (VoltprotLabel_list[i]) {
-            connect(VoltprotLabel_list[i], &QPushButton::clicked, this, [this, i]() {
-                handleVoltprotLabel(i);
-            });
-        }
-        
-        if (CurrprotLabel_list[i]) {
-            connect(CurrprotLabel_list[i], &QPushButton::clicked, this, [this, i]() {
-                handleCurrprotLabel(i);
-            });
-        }
-
-        if (AllQTimer_list[i]) {
-            connect(AllQTimer_list[i], &QTimer::timeout, this, [this, i]() {
-                handleMeas(i);
-            });
-        }
-    }
-
-    Udp_Send = new QUdpSocket(this);
-    Udp_Send->bind(QHostAddress::Any,6111,QUdpSocket::ReuseAddressHint);
-    Udp_Recv = new QUdpSocket(this);
-    Udp_Recv->bind(QHostAddress::AnyIPv4,6111);
-    connect(Udp_Recv,&QUdpSocket::readyRead,this,&MainWindow::processData);
-
-/*********************************************************************/
-    for (int i=1;i<=2;i++)
-    {
-        SDG_OUTP_list.append(ui->tab_2->findChild<QPushButton *>(QString("SDG_OUTP_%1").arg(i)));
-        SDG_SendValue_list.append(ui->tab_2->findChild<QPushButton *>(QString("SendValue_%1").arg(i)));
-        SDG_ChooseFile_list.append(ui->tab_2->findChild<QPushButton *>(QString("ChooseFile_%1").arg(i)));
-
-        SDG_FilePath_list.append(ui->tab_2->findChild<QLineEdit *>(QString("FilePath_%1").arg(i)));
-        SDG_SampleRate_list.append(ui->tab_2->findChild<QLineEdit *>(QString("SampleRate_%1").arg(i)));
-        SDG_Amplitude_list.append(ui->tab_2->findChild<QLineEdit *>(QString("Amplitude_%1").arg(i)));
-        SDG_Offset_list.append(ui->tab_2->findChild<QLineEdit *>(QString("Offset_%1").arg(i)));
-        SDG_Phase_list.append(ui->tab_2->findChild<QLineEdit *>(QString("Phase_%1").arg(i)));
-    }
-
-    for (int i = 0; i < SDG_OUTP_list.size(); i++){
-        SDG_OUTP_list[i]->setAutoFillBackground(true);
-        SDG_OUTP_list[i]->setFlat(true);
-        SDG_OUTP_list[i]->setPalette(p_OFF);
-        SDG_OUTP_list[i]->setText(QStringLiteral("输出"));
-        SDG_OUTP_list[i]->setMinimumWidth(80);
-
-        SDG_SendValue_list[i]->setAutoFillBackground(true);
-        SDG_SendValue_list[i]->setFlat(true);
-        SDG_SendValue_list[i]->setPalette(p_OFF);
-        SDG_SendValue_list[i]->setText(QStringLiteral("设置参数"));
-        SDG_SendValue_list[i]->setMinimumWidth(80);
-
-        SDG_ChooseFile_list[i]->setAutoFillBackground(true);
-        SDG_ChooseFile_list[i]->setFlat(true);
-        SDG_ChooseFile_list[i]->setPalette(p_OFF);
-        SDG_ChooseFile_list[i]->setText(QStringLiteral("选择文件"));
-        SDG_ChooseFile_list[i]->setMinimumWidth(80);
-
-        SDG_FilePath_list[i]->setMinimumWidth(80);
-        SDG_SampleRate_list[i]->setMinimumWidth(80);
-        SDG_Amplitude_list[i]->setMinimumWidth(80);
-        SDG_Offset_list[i]->setMinimumWidth(80);
-        SDG_Phase_list[i]->setMinimumWidth(80);
-
-        SDG_SampleRate_list[i]->setText("2000");
-        SDG_Amplitude_list[i]->setText("4");
-        SDG_Offset_list[i]->setText("0");
-        SDG_Phase_list[i]->setText("0");
-    }
-
-    // 使用Lambda表达式替代QSignalMapper for SDG
-    for (int i = 0; i < SDG_OUTP_list.size(); i++) {
-        if (SDG_OUTP_list[i]) {
-            connect(SDG_OUTP_list[i], &QPushButton::clicked, this, [this, i]() {
-                handleSDGOUTP(i);
-            });
-        }
-        
-        if (SDG_SendValue_list[i]) {
-            connect(SDG_SendValue_list[i], &QPushButton::clicked, this, [this, i]() {
-                handleSDGSendValue(i);
-            });
-        }
-        
-        if (SDG_ChooseFile_list[i]) {
-            connect(SDG_ChooseFile_list[i], &QPushButton::clicked, this, [this, i]() {
-                handleSDGChooseFile(i);
-            });
-        }
-    }
-/*********************************************************************/
-
-    defaultRM = NULL;
-    instr = NULL;
-    defaultRM_SDG = NULL;
-    instr_SDG = NULL;
-
-//    qDebug() << this->height() << this->width();
+    connect(ui->SCANLAN, &QPushButton::clicked, this, &MainWindow::on_SCANLAN_clicked);
+    connect(ui->CONNECTLAN_DP, &QPushButton::clicked, this, &MainWindow::on_CONNECTLAN_DP_clicked);
 }
-
 
 MainWindow::~MainWindow()
 {
+    if (scpi_) {
+        scpi_->disconnectFromHost();
+    }
     delete ui;
 }
 
-#define INST_s ":INST CH%d\n"
-#define OUTP_s ":OUTP CH%d,%s\n"
-#define VOLT_s ":VOLT %.2f\n"
-#define CURR_s ":CURR %.2f\n"
-#define VOLTPROT_s ":VOLT:PROT %.2f\n"
-#define CURRPROT_s ":CURR:PROT %.2f\n"
-#define VOLTPROTSTAT_s ":VOLT:PROT:STAT %s\n"
-#define CURRPROTSTAT_s ":CURR:PROT:STAT %s\n"
-#define INST_g ":INST?\n"
-#define OUTP_g ":OUTP? CH%d\n"
-#define VOLT_g ":VOLT?\n"
-#define CURR_g ":CURR?\n"
-#define VOLTPROT_g ":VOLT:PROT?\n"
-#define CURRPROT_g ":CURR:PROT?\n"
-#define VOLTPROTSTAT_g ":VOLT:PROT:STAT?\n"
-#define CURRPROTSTAT_g ":CURR:PROT:STAT?\n"
-#define MEASALL_g ":MEAS:ALL? CH%d\n"
-#define INSTID_g "*IDN?"
-#define send_bin "C%d:WVDT WVNM,testwave,AMPL,%.3f,OFST,%.3f,PHASE,%.4f,WAVEDATA,"
-#define set_bin "C%d:ARWV NAME,testwave"
-#define SetMode "C%d:SRATE MODE,%s"
-#define SetSample "C%d:SRATE VALUE,%.6f"
-
-ViStatus VISA_INST_GETID(ViSession instr, ViSession defaultRM, const char * IPaddr, QString *INSTID)
+void MainWindow::setupChannels()
 {
-    ViStatus status;
-    ViUInt32 retCount;
-    ViChar   buffer[MAX_CNT];    /* For checking errors */
-    ViUInt32 bufferCount;
+    channels_.reserve(3);
+    for (int i = 1; i <= 3; ++i) {
+        PowerChannel ch;
+        ch.idx = i - 1;
+        ch.outp           = ui->tab->findChild<QPushButton *>(QStringLiteral("OUTP_%1").arg(i));
+        ch.setParam       = ui->tab->findChild<QPushButton *>(QStringLiteral("SetParam_%1").arg(i));
+        ch.getParam       = ui->tab->findChild<QPushButton *>(QStringLiteral("GetParam_%1").arg(i));
+        ch.voltLabel      = ui->tab->findChild<QPushButton *>(QStringLiteral("VoltLabel_%1").arg(i));
+        ch.currLabel      = ui->tab->findChild<QPushButton *>(QStringLiteral("CurrLabel_%1").arg(i));
+        ch.voltProtLabel  = ui->tab->findChild<QPushButton *>(QStringLiteral("VoltprotLabel_%1").arg(i));
+        ch.currProtLabel  = ui->tab->findChild<QPushButton *>(QStringLiteral("CurrprotLabel_%1").arg(i));
+        ch.measVoltLabel  = ui->tab->findChild<QPushButton *>(QStringLiteral("MEASVoltLabel_%1").arg(i));
+        ch.measCurrLabel  = ui->tab->findChild<QPushButton *>(QStringLiteral("MEASCurrLabel_%1").arg(i));
+        ch.measPwrLabel   = ui->tab->findChild<QPushButton *>(QStringLiteral("MEASPwrrLabel_%1").arg(i));
 
-    status = viOpenDefaultRM(&defaultRM);
-    if (status < VI_SUCCESS) {
-        QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Initializing VISA..."));
-        return status;
-    }
-    char head[256] ="TCPIP0::";
-    char tail[] ="::INSTR";
-    strcat(head,IPaddr);
-    strcat(head,tail);
-    status = viOpen(defaultRM, (ViRsrc)head, VI_NULL, VI_NULL, &instr);
-    if (status < VI_SUCCESS) {
-        QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Opening Resource..."));
-        return status;
-    }
-    status = viSetAttribute(instr, VI_ATTR_TMO_VALUE, 5000);
-    if (status < VI_SUCCESS) {
-        QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Setting Attribute..."));
-        return status;
-    }
-    bufferCount = sprintf_s(buffer, sizeof(buffer), INSTID_g);
-    status = viWrite(instr, (ViBuf)buffer, bufferCount, (ViPUInt32)&retCount);
-    status = viRead(instr, (ViBuf)buffer, MAX_CNT, (ViPUInt32)&retCount);
-    if (status < VI_SUCCESS) {
-        return status;
-    }
-    buffer[retCount] = '\0';
+        ch.volt     = ui->tab->findChild<QLineEdit *>(QStringLiteral("Volt_%1").arg(i));
+        ch.curr     = ui->tab->findChild<QLineEdit *>(QStringLiteral("Curr_%1").arg(i));
+        ch.voltProt = ui->tab->findChild<QLineEdit *>(QStringLiteral("Voltprot_%1").arg(i));
+        ch.currProt = ui->tab->findChild<QLineEdit *>(QStringLiteral("Currprot_%1").arg(i));
+        ch.measVolt = ui->tab->findChild<QLineEdit *>(QStringLiteral("MEASVolt_%1").arg(i));
+        ch.measCurr = ui->tab->findChild<QLineEdit *>(QStringLiteral("MEASCurr_%1").arg(i));
+        ch.measPwr  = ui->tab->findChild<QLineEdit *>(QStringLiteral("MEASPwrr_%1").arg(i));
 
-    *INSTID = QString(buffer);
+        ch.timer = new QTimer(this);
+        channels_.append(ch);
+    }
 
-    status = viClose(instr);
-    status = viClose(defaultRM);
-    defaultRM = NULL;
-    instr = NULL;
+    for (int i = 0; i < channels_.size(); ++i) {
+        PowerChannel &c = channels_[i];
 
-    return status;
+        if (c.outp) {
+            c.outp->setAutoFillBackground(true);
+            c.outp->setFlat(true);
+            c.outp->setPalette(p_OFF);
+            c.outp->setText(QStringLiteral("输出"));
+            c.outp->setMinimumWidth(80);
+        }
+        if (c.voltProtLabel) {
+            c.voltProtLabel->setAutoFillBackground(true);
+            c.voltProtLabel->setFlat(true);
+            c.voltProtLabel->setPalette(p_OFF);
+            c.voltProtLabel->setText(QStringLiteral("限压(V)"));
+            c.voltProtLabel->setMinimumWidth(80);
+        }
+        if (c.currProtLabel) {
+            c.currProtLabel->setAutoFillBackground(true);
+            c.currProtLabel->setFlat(true);
+            c.currProtLabel->setPalette(p_OFF);
+            c.currProtLabel->setText(QStringLiteral("限流(A)"));
+            c.currProtLabel->setMinimumWidth(80);
+        }
+        if (c.voltLabel) {
+            c.voltLabel->setDisabled(true);
+            c.voltLabel->setText(QStringLiteral("电压(V)"));
+            c.voltLabel->setMinimumWidth(80);
+        }
+        if (c.currLabel) {
+            c.currLabel->setDisabled(true);
+            c.currLabel->setText(QStringLiteral("电流(A)"));
+            c.currLabel->setMinimumWidth(80);
+        }
+        if (c.setParam) {
+            c.setParam->setText(QStringLiteral("设置参数"));
+            c.setParam->setMinimumWidth(80);
+        }
+        if (c.getParam) {
+            c.getParam->setText(QStringLiteral("读取参数"));
+            c.getParam->setMinimumWidth(80);
+        }
+        if (c.volt)     { c.volt->setMinimumWidth(80);     c.volt->setText(QStringLiteral("5")); }
+        if (c.curr)     { c.curr->setMinimumWidth(80);     c.curr->setText(QStringLiteral("1.5")); }
+        if (c.voltProt) { c.voltProt->setMinimumWidth(80); c.voltProt->setText(QStringLiteral("6")); }
+        if (c.currProt) { c.currProt->setMinimumWidth(80); c.currProt->setText(QStringLiteral("2")); }
+
+        if (c.measVoltLabel) {
+            c.measVoltLabel->setDisabled(true);
+            c.measVoltLabel->setText(QStringLiteral("电压(V)"));
+        }
+        if (c.measCurrLabel) {
+            c.measCurrLabel->setDisabled(true);
+            c.measCurrLabel->setText(QStringLiteral("电流(A)"));
+        }
+        if (c.measPwrLabel) {
+            c.measPwrLabel->setDisabled(true);
+            c.measPwrLabel->setText(QStringLiteral("功率(W)"));
+        }
+        if (c.measVolt) { c.measVolt->setDisabled(true); c.measVolt->setMinimumWidth(80); }
+        if (c.measCurr) { c.measCurr->setDisabled(true); c.measCurr->setMinimumWidth(80); }
+        if (c.measPwr)  { c.measPwr->setDisabled(true);  c.measPwr->setMinimumWidth(80); }
+
+        if (c.outp) {
+            connect(c.outp, &QPushButton::clicked, this, [this, i]() { handleOUTP(i); });
+        }
+        if (c.setParam) {
+            connect(c.setParam, &QPushButton::clicked, this, [this, i]() { handleSetParam(i); });
+        }
+        if (c.getParam) {
+            connect(c.getParam, &QPushButton::clicked, this, [this, i]() { handleGetParam(i); });
+        }
+        if (c.voltProtLabel) {
+            connect(c.voltProtLabel, &QPushButton::clicked, this, [this, i]() { handleVoltprotLabel(i); });
+        }
+        if (c.currProtLabel) {
+            connect(c.currProtLabel, &QPushButton::clicked, this, [this, i]() { handleCurrprotLabel(i); });
+        }
+        connect(c.timer, &QTimer::timeout, this, [this, i]() { handleMeas(i); });
+    }
 }
-ViStatus VISA_POWER_SETValueBool(ViSession instr, uint32_t ch, const char* Value)
+
+bool MainWindow::parseBool(const QByteArray &raw) const
 {
-    ViStatus status;
-    ViUInt32 retCount;
-    ViChar	buffer[MAX_CNT];	/* For checking errors */
-
-    ViUInt32 bufferCount;
-
-    bufferCount = sprintf_s(buffer, sizeof(buffer), INST_s, ch+1);
-    status = viWrite(instr, (ViBuf)buffer, bufferCount, (ViPUInt32)&retCount);
-    if (status < VI_SUCCESS) {
-        return status;
-    }
-
-    bufferCount = sprintf_s(buffer, sizeof(buffer), OUTP_s, ch+1, Value);
-    status = viWrite(instr, (ViBuf)buffer, bufferCount, (ViPUInt32)&retCount);
-
-    return status;
+    const QByteArray v = raw.trimmed().toUpper();
+    return (v == "ON" || v == "1");
 }
-ViStatus VISA_POWER_SETValue(ViSession instr, uint32_t ch, const char * format, float Value)
+
+void MainWindow::writeChannelCommand(int channelIdx, const char *fmt, double value)
 {
-    ViStatus status;
-    ViUInt32 retCount;
-    ViChar	buffer[MAX_CNT];	/* For checking errors */
-
-    ViUInt32 bufferCount;
-
-    bufferCount = sprintf_s(buffer, sizeof(buffer), INST_s, ch+1);
-    status = viWrite(instr, (ViBuf)buffer, bufferCount, (ViPUInt32)&retCount);
-    if (status < VI_SUCCESS) {
-        return status;
-    }
-    bufferCount = sprintf_s(buffer, sizeof(buffer), format, Value);
-    status = viWrite(instr, (ViBuf)buffer, bufferCount, (ViPUInt32)&retCount);
-    return status;
+    if (!scpi_) return;
+    // 通道选择 + 设置值。
+    scpi_->write(fmtCh(kCmdInstSet, channelIdx + 1));
+    scpi_->write(fmtVal(fmt, value));
 }
-ViStatus VISA_POWER_SETBool(ViSession instr, uint32_t ch, const char * format, const char* Value)
+
+void MainWindow::writeChannelBool(int channelIdx, const char *fmt, bool on)
 {
-    ViStatus status;
-    ViUInt32 retCount;
-    ViChar	buffer[MAX_CNT];	/* For checking errors */
-
-    ViUInt32 bufferCount;
-
-    bufferCount = sprintf_s(buffer, sizeof(buffer), INST_s, ch+1);
-    status = viWrite(instr, (ViBuf)buffer, bufferCount, (ViPUInt32)&retCount);
-    if (status < VI_SUCCESS) {
-        return status;
-    }
-    bufferCount = sprintf_s(buffer, sizeof(buffer), format, Value);
-    status = viWrite(instr, (ViBuf)buffer, bufferCount, (ViPUInt32)&retCount);
-    return status;
+    if (!scpi_) return;
+    scpi_->write(fmtCh(kCmdInstSet, channelIdx + 1));
+    scpi_->write(fmtStr(fmt, on ? QStringLiteral("ON") : QStringLiteral("OFF")));
 }
-ViStatus VISA_POWER_GETValue(ViSession instr, uint32_t ch, const char * format, float *Valueptr)
+
+QByteArray MainWindow::queryChannel(int channelIdx, const char *fmt)
 {
-    ViStatus status;
-    ViUInt32 retCount;
-    ViChar	buffer[MAX_CNT];	/* For checking errors */
-
-    ViUInt32 bufferCount;
-
-    bufferCount = sprintf_s(buffer, sizeof(buffer), INST_s, ch+1);
-    status = viWrite(instr, (ViBuf)buffer, bufferCount, (ViPUInt32)&retCount);
-    if (status < VI_SUCCESS) {
-        return status;
-    }
-    bufferCount = sprintf_s(buffer, sizeof(buffer), format);
-    status = viWrite(instr, (ViBuf)buffer, bufferCount, (ViPUInt32)&retCount);
-    status = viRead(instr, (ViBuf)buffer, bufferCount, (ViPUInt32)&retCount);
-    if (status < VI_SUCCESS) {
-        return status;
-    }
-    buffer[retCount] = '\0';
-    *Valueptr = QString(buffer).toFloat();
-    return status;
+    if (!scpi_) return {};
+    scpi_->write(fmtCh(kCmdInstSet, channelIdx + 1));
+    return scpi_->query(QByteArray(fmt));
 }
-ViStatus VISA_POWER_GETBool(ViSession instr, uint32_t ch, const char * format, ViBuf bufferptr, ViUInt32 bufferptrCnt, ViPUInt32 retCountptr)
-{
-    ViStatus status;
-    ViChar	buffer[MAX_CNT];	/* For checking errors */
 
-    ViUInt32 bufferCount;
-
-    bufferCount = sprintf_s(buffer, sizeof(buffer), INST_s, ch+1);
-    status = viWrite(instr, (ViBuf)buffer, bufferCount, (ViPUInt32)retCountptr);
-    if (status < VI_SUCCESS) {
-        return status;
-    }
-    bufferCount = sprintf_s(buffer, sizeof(buffer), format, ch+1);
-    status = viWrite(instr, (ViBuf)buffer, bufferCount, (ViPUInt32)retCountptr);
-    status = viRead(instr, (ViBuf)bufferptr, bufferptrCnt, (ViPUInt32)retCountptr);
-    if (status < VI_SUCCESS) {
-        return status;
-    }
-    bufferptr[*retCountptr] = '\0';
-    return status;
-}
-ViStatus VISA_MEAS_GETBool(ViSession instr, uint32_t ch, const char * format, ViBuf bufferptr, ViUInt32 bufferptrCnt, ViPUInt32 retCountptr)
-{
-    ViStatus status;
-    ViChar	buffer[MAX_CNT];	/* For checking errors */
-
-    ViUInt32 bufferCount;
-    bufferCount = sprintf_s(buffer, sizeof(buffer), format, ch+1);
-    status = viWrite(instr, (ViBuf)buffer, bufferCount, (ViPUInt32)retCountptr);
-    status = viRead(instr, (ViBuf)bufferptr, bufferptrCnt, (ViPUInt32)retCountptr);
-    if (status < VI_SUCCESS) {
-        return status;
-    }
-    bufferptr[*retCountptr] = '\0';
-    return status;
-}
 void MainWindow::handleOUTP(int id)
 {
-    qDebug() << "handleOUTP called with id:" << id;
-    
-    if (instr != NULL)
-    {
-        qDebug() << "Instrument connected, current palette:" << (OUTP_list[id]->palette() == p_OFF ? "OFF" : "ON");
-        
-        if (OUTP_list[id]->palette() == p_OFF){
-            qDebug() << "Setting output" << id << "to ON";
-            OUTP_list[id]->setPalette(p_ON);
-            OUTP_list[id]->setText(QStringLiteral("输出"));
-            ViStatus status = VISA_POWER_SETValueBool(instr, id, "ON");
-            qDebug() << "VISA_POWER_SETValueBool ON status:" << status;
-        }
-        else{
-            qDebug() << "Setting output" << id << "to OFF";
-            OUTP_list[id]->setPalette(p_OFF);
-            OUTP_list[id]->setText(QStringLiteral("输出"));
-            ViStatus status = VISA_POWER_SETValueBool(instr, id, "OFF");
-            qDebug() << "VISA_POWER_SETValueBool OFF status:" << status;
-        }
+    if (!scpi_ || !scpi_->isConnected()) {
+        QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("未连接仪器"));
+        return;
     }
-    else
-    {
-        qDebug() << "Instrument not connected";
-        QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("未连接仪器"));
-    }
+    PowerChannel &c = channels_[id];
+    const bool turnOn = (c.outp->palette() == p_OFF);
+    c.outp->setPalette(turnOn ? p_ON : p_OFF);
+    c.outp->setText(QStringLiteral("输出"));
+
+    // :OUTP CHx,ON/OFF 一次性带通道，不需要先 :INST。
+    scpi_->write(fmtChStr(kCmdOutpSet, id + 1, turnOn ? QStringLiteral("ON") : QStringLiteral("OFF")));
 }
+
 void MainWindow::handleSetParam(int id)
 {
-    if (instr != NULL)
-    {
-        VISA_POWER_SETValue(instr, id, VOLT_s, Volt_list[id]->text().toFloat());
-        VISA_POWER_SETValue(instr, id, CURR_s, Curr_list[id]->text().toFloat());
-        VISA_POWER_SETValue(instr, id, VOLTPROT_s, Voltprot_list[id]->text().toFloat());
-        VISA_POWER_SETValue(instr, id, CURRPROT_s, Currprot_list[id]->text().toFloat());
+    if (!scpi_ || !scpi_->isConnected()) {
+        QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("未连接仪器"));
+        return;
     }
-    else
-    {
-        QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("未连接仪器"));
-    }
+    PowerChannel &c = channels_[id];
+    writeChannelCommand(id, kCmdVoltSet,     c.volt->text().toDouble());
+    writeChannelCommand(id, kCmdCurrSet,     c.curr->text().toDouble());
+    writeChannelCommand(id, kCmdVoltProtSet, c.voltProt->text().toDouble());
+    writeChannelCommand(id, kCmdCurrProtSet, c.currProt->text().toDouble());
 }
+
 void MainWindow::handleGetParam(int id)
 {
-    if (instr != NULL)
-    {
-        ViChar	buffer[MAX_CNT];	/* For checking errors */
-        ViUInt32 retCount;
-        float Value;
-
-        VISA_POWER_GETBool(instr, id, OUTP_g, (ViBuf)buffer, MAX_CNT, &retCount);
-        if (QString::compare(buffer, "ON\n") == 0){
-            OUTP_list[id]->setPalette(p_ON);
-            OUTP_list[id]->setText(QStringLiteral("输出"));
-            VISA_POWER_SETValueBool(instr, id, "ON");
-        }
-        else{
-            OUTP_list[id]->setPalette(p_OFF);
-            OUTP_list[id]->setText(QStringLiteral("输出"));
-            VISA_POWER_SETValueBool(instr, id, "OFF");
-        }
-
-        VISA_POWER_GETValue(instr, id, VOLT_g, &Value);
-        Volt_list[id]->setText(QString("%1").arg(Value, 0, 'g',4));
-        VISA_POWER_GETValue(instr, id, CURR_g, &Value);
-        Curr_list[id]->setText(QString("%1").arg(Value, 0, 'g',4));
-        VISA_POWER_GETValue(instr, id, VOLTPROT_g, &Value);
-        Voltprot_list[id]->setText(QString("%1").arg(Value, 0, 'g',4));
-        VISA_POWER_GETValue(instr, id, CURRPROT_g, &Value);
-        Currprot_list[id]->setText(QString("%1").arg(Value, 0, 'g',4));
-
-
-        VISA_POWER_GETBool(instr, id, VOLTPROTSTAT_g, (ViBuf)buffer, MAX_CNT, &retCount);
-        if (QString::compare(buffer, "ON\n") == 0){
-            VoltprotLabel_list[id]->setPalette(p_ON);
-            VoltprotLabel_list[id]->setText(QStringLiteral("限压(V)"));
-            VISA_POWER_SETBool(instr, id, VOLTPROTSTAT_s, "ON");
-        }
-        else{
-            VoltprotLabel_list[id]->setPalette(p_OFF);
-            VoltprotLabel_list[id]->setText(QStringLiteral("限压(V)"));
-            VISA_POWER_SETBool(instr, id, VOLTPROTSTAT_s, "OFF");
-        }
-        VISA_POWER_GETBool(instr, id, CURRPROTSTAT_g, (ViBuf)buffer, MAX_CNT, &retCount);
-        if (QString::compare(buffer, "ON\n") == 0){
-            CurrprotLabel_list[id]->setPalette(p_ON);
-            CurrprotLabel_list[id]->setText(QStringLiteral("限流(A)"));
-            VISA_POWER_SETBool(instr, id, CURRPROTSTAT_s, "ON");
-        }
-        else{
-            CurrprotLabel_list[id]->setPalette(p_OFF);
-            CurrprotLabel_list[id]->setText(QStringLiteral("限流(A)"));
-            VISA_POWER_SETBool(instr, id, CURRPROTSTAT_s, "OFF");
-        }
+    if (!scpi_ || !scpi_->isConnected()) {
+        QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("未连接仪器"));
+        return;
     }
-    else
-    {
-        QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("未连接仪器"));
-    }
+    PowerChannel &c = channels_[id];
+
+    // :OUTP? CHx 不用先 :INST。
+    const QByteArray outpResp = scpi_->query(fmtCh(kQryOutp, id + 1));
+    const bool outpOn = parseBool(outpResp);
+    c.outp->setPalette(outpOn ? p_ON : p_OFF);
+    c.outp->setText(QStringLiteral("输出"));
+    // 与原行为一致：把读取到的状态再写回仪器（保证 UI 状态一致）。
+    scpi_->write(fmtChStr(kCmdOutpSet, id + 1, outpOn ? QStringLiteral("ON") : QStringLiteral("OFF")));
+
+    auto setNum = [](QLineEdit *e, const QByteArray &raw) {
+        if (!e) return;
+        bool ok = false;
+        double v = QString::fromLatin1(raw).trimmed().toDouble(&ok);
+        e->setText(ok ? QStringLiteral("%1").arg(v, 0, 'g', 4) : QString::fromLatin1(raw.trimmed()));
+    };
+
+    setNum(c.volt,     queryChannel(id, kQryVolt));
+    setNum(c.curr,     queryChannel(id, kQryCurr));
+    setNum(c.voltProt, queryChannel(id, kQryVoltProt));
+    setNum(c.currProt, queryChannel(id, kQryCurrProt));
+
+    const bool voltProtOn = parseBool(queryChannel(id, kQryVoltProtStat));
+    c.voltProtLabel->setPalette(voltProtOn ? p_ON : p_OFF);
+    c.voltProtLabel->setText(QStringLiteral("限压(V)"));
+    writeChannelBool(id, kCmdVoltProtStat, voltProtOn);
+
+    const bool currProtOn = parseBool(queryChannel(id, kQryCurrProtStat));
+    c.currProtLabel->setPalette(currProtOn ? p_ON : p_OFF);
+    c.currProtLabel->setText(QStringLiteral("限流(A)"));
+    writeChannelBool(id, kCmdCurrProtStat, currProtOn);
 }
+
 void MainWindow::handleVoltprotLabel(int id)
 {
-    if (instr != NULL)
-    {
-        if (VoltprotLabel_list[id]->palette() == p_OFF){
-            VoltprotLabel_list[id]->setPalette(p_ON);
-            VoltprotLabel_list[id]->setText(QStringLiteral("限压(V)"));
-            VISA_POWER_SETBool(instr, id, VOLTPROTSTAT_s, "ON");
-        }
-        else{
-            VoltprotLabel_list[id]->setPalette(p_OFF);
-            VoltprotLabel_list[id]->setText(QStringLiteral("限压(V)"));
-            VISA_POWER_SETBool(instr, id, VOLTPROTSTAT_s, "OFF");
-        }
+    if (!scpi_ || !scpi_->isConnected()) {
+        QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("未连接仪器"));
+        return;
     }
-    else
-    {
-        QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("未连接仪器"));
-    }
+    PowerChannel &c = channels_[id];
+    const bool turnOn = (c.voltProtLabel->palette() == p_OFF);
+    c.voltProtLabel->setPalette(turnOn ? p_ON : p_OFF);
+    c.voltProtLabel->setText(QStringLiteral("限压(V)"));
+    writeChannelBool(id, kCmdVoltProtStat, turnOn);
 }
+
 void MainWindow::handleCurrprotLabel(int id)
 {
-    if (instr != NULL)
-    {
-        if (CurrprotLabel_list[id]->palette() == p_OFF){
-            CurrprotLabel_list[id]->setPalette(p_ON);
-            CurrprotLabel_list[id]->setText(QStringLiteral("限流(A)"));
-            VISA_POWER_SETBool(instr, id, CURRPROTSTAT_s, "ON");
-        }
-        else{
-            CurrprotLabel_list[id]->setPalette(p_OFF);
-            CurrprotLabel_list[id]->setText(QStringLiteral("限流(A)"));
-            VISA_POWER_SETBool(instr, id, CURRPROTSTAT_s, "OFF");
-        }
+    if (!scpi_ || !scpi_->isConnected()) {
+        QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("未连接仪器"));
+        return;
     }
-    else
-    {
-        QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("未连接仪器"));
-    }
+    PowerChannel &c = channels_[id];
+    const bool turnOn = (c.currProtLabel->palette() == p_OFF);
+    c.currProtLabel->setPalette(turnOn ? p_ON : p_OFF);
+    c.currProtLabel->setText(QStringLiteral("限流(A)"));
+    writeChannelBool(id, kCmdCurrProtStat, turnOn);
 }
+
 void MainWindow::handleMeas(int id)
 {
-    ViChar	buffer[MAX_CNT];	/* For checking errors */
-    ViUInt32 retCount;
-
-    VISA_MEAS_GETBool(instr, id, MEASALL_g, (ViBuf)buffer, MAX_CNT, &retCount);
-    QString line(buffer);
-    QStringList list = line.split(",");
-    if (list.size() >= 3) {
-        MEASVolt_list[id]->setText(QString("%1").arg(list.at(0).toFloat(), 0, 'g',4));
-        MEASCurr_list[id]->setText(QString("%1").arg(list.at(1).toFloat(), 0, 'g',4));
-        MEASPwrr_list[id]->setText(QString("%1").arg(list.at(2).toFloat(), 0, 'g',4));
-    }
+    if (!scpi_ || !scpi_->isConnected()) return;
+    const QByteArray resp = scpi_->query(fmtCh(kQryMeasAll, id + 1));
+    const QString line = QString::fromLatin1(resp).trimmed();
+    const QStringList parts = line.split(QChar(','));
+    if (parts.size() < 3) return;
+    PowerChannel &c = channels_[id];
+    if (c.measVolt) c.measVolt->setText(QStringLiteral("%1").arg(parts.at(0).toFloat(), 0, 'g', 4));
+    if (c.measCurr) c.measCurr->setText(QStringLiteral("%1").arg(parts.at(1).toFloat(), 0, 'g', 4));
+    if (c.measPwr)  c.measPwr->setText(QStringLiteral("%1").arg(parts.at(2).toFloat(), 0, 'g', 4));
 }
+
 void MainWindow::on_SCANLAN_clicked()
 {
     ui->comboBox_DP->clear();
-    ui->comboBox_SDG->clear();
-    uint8_t WlanScanPM[56]={0x00,0x01,0x23,0x45,0x00,0x00,0x00,0x00,
-                         0x00,0x00,0x00,0x02,0x00,0x01,0x86,0xa0,
-                         0x00,0x00,0x00,0x02,0x00,0x00,0x00,0x03,
-                         0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
-                         0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
-                         0x00,0x06,0x07,0xaf,0x00,0x00,0x00,0x01,
-                         0x00,0x00,0x00,0x06,0x00,0x00,0x00,0x00};
+    probeQueue_.clear();
+    probedIps_.clear();
 
-    QList<QNetworkInterface> ifaces = QNetworkInterface::allInterfaces();
-    for (int i = 0; i < ifaces.size(); i++)
-    {
-        // Now get all IP addresses for the current interface
-        QList<QNetworkAddressEntry> addrs = ifaces[i].addressEntries();
+    static const uint8_t kPortmapPkt[56] = {
+        0x00,0x01,0x23,0x45,0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x02,0x00,0x01,0x86,0xa0,
+        0x00,0x00,0x00,0x02,0x00,0x00,0x00,0x03,
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+        0x00,0x06,0x07,0xaf,0x00,0x00,0x00,0x01,
+        0x00,0x00,0x00,0x06,0x00,0x00,0x00,0x00
+    };
 
-        // And for any IP address, if it is IPv4 and the interface is active, send the packet
-        for (int j = 0; j < addrs.size(); j++)
-            if ((addrs[j].ip().protocol() == QAbstractSocket::IPv4Protocol) && (addrs[j].broadcast().toString() != ""))
-                Udp_Send->writeDatagram((const char*)WlanScanPM, 56, addrs[j].broadcast(), 111);
+    const QList<QNetworkInterface> ifaces = QNetworkInterface::allInterfaces();
+    for (const QNetworkInterface &iface : ifaces) {
+        const QList<QNetworkAddressEntry> addrs = iface.addressEntries();
+        for (const QNetworkAddressEntry &entry : addrs) {
+            if (entry.ip().protocol() != QAbstractSocket::IPv4Protocol) continue;
+            if (entry.broadcast().toString().isEmpty()) continue;
+            udpSend_->writeDatagram(reinterpret_cast<const char *>(kPortmapPkt),
+                                    static_cast<qint64>(sizeof(kPortmapPkt)),
+                                    entry.broadcast(), 111);
+        }
     }
-
+    statusBar()->showMessage(QStringLiteral("正在扫描..."), 2000);
 }
+
 void MainWindow::processData()
 {
-    while(Udp_Recv->hasPendingDatagrams()){
-        QHostAddress TargetIP;
-        quint16 TargetPort;
-        QByteArray dataGram;
-        QString INSTID;
-        dataGram.resize(Udp_Recv->pendingDatagramSize());
-        Udp_Recv->readDatagram(dataGram.data(),dataGram.size(),&TargetIP,&TargetPort);
+    while (udpRecv_->hasPendingDatagrams()) {
+        QHostAddress targetIp;
+        quint16 targetPort = 0;
+        QByteArray dg;
+        dg.resize(static_cast<int>(udpRecv_->pendingDatagramSize()));
+        udpRecv_->readDatagram(dg.data(), dg.size(), &targetIp, &targetPort);
 
-        // Debug output the datagram in hex format
-        // qDebug() << "Received datagram hex:" << dataGram.toHex();
+        // 过滤 ICMP/无效响应：仅来自 portmap 端口 111 且尾部包含非零数据的视为有效。
+        if (dg.size() < 20 || targetPort != 111) continue;
+        bool hasNonZeroTail = false;
+        for (int i = dg.size() - 8; i < dg.size(); ++i) {
+            if (static_cast<unsigned char>(dg[i]) != 0x00) { hasNonZeroTail = true; break; }
+        }
+        if (!hasNonZeroTail) continue;
 
-        // Filter out ICMP packets - they typically have all zeros at the end
-        // Valid instruments like 192.168.75.3 have non-zero data at the end
-        if (dataGram.size() < 20 || TargetPort != 111) {
-            continue; // Skip invalid packets
-        }
-        
-        // Check if it's a valid instrument response by looking for non-zero data at the end
-        // ICMP packets typically end with all zeros, while instrument responses have actual data
-        bool hasNonZeroAtEnd = false;
-        if (dataGram.size() >= 8) {
-            // Check last 8 bytes for non-zero content
-            for (int i = dataGram.size() - 8; i < dataGram.size(); i++) {
-                // qDebug() << QString("Byte %1: 0x%2").arg(i).arg((unsigned char)dataGram[i], 2, 16, QChar('0'));
-                if ((unsigned char)dataGram[i] != 0x00) {
-                    hasNonZeroAtEnd = true;
-                    break;
-                }
-            }
-        }
-        
-        if (!hasNonZeroAtEnd) {
-            continue; // Skip ICMP or packets with all zeros at end
-        }
-
-        QString  TargetIPstr = TargetIP.toString();
-        QByteArray TargetIPchba = TargetIPstr.toLatin1();
-        char*  TargetIPch = TargetIPchba.data();
-
-        qDebug() << "Valid instrument response from:" << TargetIPch;
-        VISA_INST_GETID(instr, defaultRM, TargetIPch, &INSTID);
-        QStringList list = INSTID.split(",");
-        if (list.size() >= 2) {
-            QString ModelNum = list[1];
-            if(ModelNum.contains("DP",Qt::CaseSensitive)) {
-                ui->comboBox_DP->addItem(TargetIP.toString() + "--" + ModelNum);
-            }
-            else if(ModelNum.contains("SDG",Qt::CaseSensitive)) {
-                ui->comboBox_SDG->addItem(TargetIP.toString() + "--" + ModelNum);
-            }
-        }
-        
+        const QString ip = targetIp.toString();
+        if (probedIps_.contains(ip)) continue;
+        probedIps_.insert(ip);
+        probeQueue_.enqueue(ip);
+    }
+    if (!probing_ && !probeQueue_.isEmpty()) {
+        probing_ = true;
+        QTimer::singleShot(0, this, &MainWindow::probeNext);
     }
 }
+
+void MainWindow::probeNext()
+{
+    if (probeQueue_.isEmpty()) {
+        probing_ = false;
+        statusBar()->showMessage(QStringLiteral("扫描完成"), 2000);
+        return;
+    }
+    const QString ip = probeQueue_.dequeue();
+
+    QTcpSocket *probe = new QTcpSocket(this);
+    QTimer *deadline = new QTimer(this);
+    deadline->setSingleShot(true);
+
+    auto cleanup = [this, probe, deadline]() {
+        deadline->stop();
+        deadline->deleteLater();
+        probe->disconnect();
+        probe->abort();
+        probe->deleteLater();
+        QTimer::singleShot(0, this, &MainWindow::probeNext);
+    };
+
+    auto fail = [this, ip, cleanup](const QString &reason) {
+        statusBar()->showMessage(QStringLiteral("%1: %2").arg(ip, reason), 1500);
+        cleanup();
+    };
+
+    connect(deadline, &QTimer::timeout, this, [fail]() { fail(QStringLiteral("5025 端口探测超时")); });
+
+    connect(probe, &QTcpSocket::connected, this, [probe]() {
+        probe->write(kQryIdn);
+    });
+
+#if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
+    connect(probe, &QAbstractSocket::errorOccurred, this,
+            [fail](QAbstractSocket::SocketError) { fail(QStringLiteral("5025 不可达")); });
+#else
+    connect(probe, QOverload<QAbstractSocket::SocketError>::of(&QAbstractSocket::error), this,
+            [fail](QAbstractSocket::SocketError) { fail(QStringLiteral("5025 不可达")); });
+#endif
+
+    QByteArray *acc = new QByteArray;
+    connect(probe, &QTcpSocket::readyRead, this, [this, ip, probe, acc, cleanup]() {
+        acc->append(probe->readAll());
+        if (!acc->contains('\n')) return;
+        const QString idn = QString::fromLatin1(*acc).trimmed();
+        delete acc;
+        const QStringList parts = idn.split(QChar(','));
+        if (parts.size() >= 2) {
+            const QString model = parts[1].trimmed();
+            if (model.contains(QStringLiteral("DP"), Qt::CaseSensitive)) {
+                ui->comboBox_DP->addItem(ip + QStringLiteral("--") + model);
+            } else {
+                statusBar()->showMessage(QStringLiteral("%1: 非 DP 设备 (%2)").arg(ip, model), 1500);
+            }
+        }
+        cleanup();
+    });
+
+    deadline->start(kProbeConnectTimeoutMs + kProbeIdnTimeoutMs);
+    probe->connectToHost(ip, kScpiPort);
+}
+
 void MainWindow::on_CONNECTLAN_DP_clicked()
 {
-    ViUInt32 retCount;
-    ViChar	buffer[MAX_CNT];	/* For checking errors */
+    if (ui->CONNECTLAN_DP->text() == QStringLiteral("连接")) {
+        if (ui->comboBox_DP->count() == 0) {
+            QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("没有可用仪器"));
+            return;
+        }
+        const QString item = ui->comboBox_DP->currentText();
+        const QString ip = item.section(QStringLiteral("--"), 0, 0);
 
-    if (ui->CONNECTLAN_DP->text() == QStringLiteral("连接")){
+        scpi_ = new ScpiClient(this);
+        connect(scpi_, &ScpiClient::disconnected, this, &MainWindow::onScpiDisconnected);
+        connect(scpi_, &ScpiClient::errorOccurred, this, [this](const QString &msg) {
+            qDebug() << "SCPI:" << msg;
+        });
 
-        if (ui->comboBox_DP->count()==0)
-        {
-            QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("没有可用仪器"));
+        if (!scpi_->connectToHost(ip, kScpiPort, kScpiConnectTimeoutMs)) {
+            QMessageBox::information(this, QStringLiteral("提示"),
+                                     QStringLiteral("连接 %1:%2 失败").arg(ip).arg(kScpiPort));
+            scpi_->deleteLater();
+            scpi_ = nullptr;
             return;
         }
 
         ui->CONNECTLAN_DP->setText(QStringLiteral("断开"));
         ui->comboBox_DP->setDisabled(true);
 
-        /* Communication channels */
-        /* Return count from string I/O */
-        /* Buffer for string I/O */
-        /* Begin by initializing the system */
-        status = viOpenDefaultRM(&defaultRM);
-        if (status < VI_SUCCESS) {
-            QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Initializing VISA..."));
-        }
-        QString comboBoxDP = ui->comboBox_DP->currentText();
-        QStringList list = comboBoxDP.split("--");
-        QString IPaddrstr = list[0];
-        QByteArray IPaddrba = IPaddrstr.toLatin1();
-        char* IPaddrch;
-        IPaddrch = IPaddrba.data();
-        char head[256] ="TCPIP0::";
-        char tail[] ="::INSTR";
-        snprintf(head, sizeof(head), "TCPIP0::%s::INSTR", IPaddrch);
-        /* NOTE: For simplicity, we will not show error checking */
-        status = viOpen(defaultRM, (ViRsrc)head, VI_NULL, VI_NULL, &instr);
-        if (status < VI_SUCCESS) {
-            QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Opening Resource..."));
-            return;
-        }
-        /* Set the timeout for message-based communication */
-        status = viSetAttribute(instr, VI_ATTR_TMO_VALUE, 5000);
-        if (status < VI_SUCCESS) {
-            QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Setting Attribute..."));
-            return;
-        }
-
-        for (int i = 0; i < OUTP_list.size(); ++i) {
+        for (int i = 0; i < channels_.size(); ++i) {
             handleGetParam(i);
-            AllQTimer_list[i]->start(250);
+            if (channels_[i].timer) channels_[i].timer->start(250);
         }
-
-    }
-    else{
+    } else {
+        for (PowerChannel &c : channels_) {
+            if (c.timer) c.timer->stop();
+        }
+        if (scpi_) {
+            scpi_->disconnectFromHost();
+            scpi_->deleteLater();
+            scpi_ = nullptr;
+        }
         ui->CONNECTLAN_DP->setText(QStringLiteral("连接"));
         ui->comboBox_DP->setEnabled(true);
-
-        for (int i = 0; i < OUTP_list.size(); ++i) {
-            AllQTimer_list[i]->stop();
-        }
-        status = viClose(instr);
-        status = viClose(defaultRM);
-        defaultRM = NULL;
-        instr = NULL;
-    }
-}
-void MainWindow::on_CONNECTLAN_SDG_clicked()
-{
-    ViUInt32 retCount;
-    ViChar	buffer[MAX_CNT];	/* For checking errors */
-
-    if (ui->CONNECTLAN_SDG->text() == QStringLiteral("连接")){
-        if (ui->comboBox_SDG->count()==0)
-        {
-            QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("没有可用仪器"));
-            return;
-        }
-
-        ui->CONNECTLAN_SDG->setText(QStringLiteral("断开"));
-        ui->comboBox_SDG->setDisabled(true);
-
-        /* Communication channels */
-        /* Return count from string I/O */
-        /* Buffer for string I/O */
-        /* Begin by initializing the system */
-        status = viOpenDefaultRM(&defaultRM_SDG);
-        if (status < VI_SUCCESS) {
-            QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Initializing VISA..."));
-            return;
-        }
-        QString comboBoxSDG = ui->comboBox_SDG->currentText();
-        QStringList list = comboBoxSDG.split("--");
-        QString IPaddrstr = list[0];
-        QByteArray IPaddrba = IPaddrstr.toLatin1();
-        char* IPaddrch;
-        IPaddrch = IPaddrba.data();
-        char head[256] ="TCPIP0::";
-        char tail[] ="::INSTR";
-        strcat(head,IPaddrch);
-        strcat(head,tail);
-        /* NOTE: For simplicity, we will not show error checking */
-        status = viOpen(defaultRM_SDG, (ViRsrc)head, VI_NULL, VI_NULL, &instr_SDG);
-        if (status < VI_SUCCESS) {
-            QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Opening Resource..."));
-            return;
-        }
-        /* Set the timeout for message-based communication */
-        status = viSetAttribute(instr_SDG, VI_ATTR_TMO_VALUE, 5000);
-        if (status < VI_SUCCESS) {
-            QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("Error Setting Attribute..."));
-            return;
-        }
-
-    }
-    else{
-        ui->CONNECTLAN_SDG->setText(QStringLiteral("连接"));
-        ui->comboBox_SDG->setEnabled(true);
-
-        status = viClose(instr_SDG);
-        status = viClose(defaultRM_SDG);
-        defaultRM_SDG = NULL;
-        instr_SDG = NULL;
     }
 }
 
-#define SDG_OUTP_s "C%d:OUTP %s"
-ViStatus VISA_SDG_CtrlOUTP(ViSession instr, uint32_t ch, const char* Value)
+void MainWindow::onScpiDisconnected()
 {
-    ViStatus status;
-    ViUInt32 retCount;
-    ViChar	buffer[MAX_CNT];	/* For checking errors */
-    ViUInt32 bufferCount;
-
-    bufferCount = sprintf_s(buffer, sizeof(buffer), SDG_OUTP_s, ch+1, Value);
-    status = viWrite(instr, (ViBuf)buffer, bufferCount, (ViPUInt32)&retCount);
-
-    return status;
-}
-void MainWindow::handleSDGOUTP(int id)
-{
-    if (instr_SDG != NULL)
-    {
-        if (SDG_OUTP_list[id]->palette() == p_OFF){
-            SDG_OUTP_list[id]->setPalette(p_ON);
-            SDG_OUTP_list[id]->setText(QStringLiteral("输出"));
-            VISA_SDG_CtrlOUTP(instr_SDG, id, "ON");
-        }
-        else{
-            SDG_OUTP_list[id]->setPalette(p_OFF);
-            SDG_OUTP_list[id]->setText(QStringLiteral("输出"));
-            VISA_SDG_CtrlOUTP(instr_SDG, id, "OFF");
-        }
+    // 仪器主动断开 / 网线被拔 等：停 timer，UI 恢复到"连接"状态。
+    for (PowerChannel &c : channels_) {
+        if (c.timer) c.timer->stop();
     }
-    else
-    {
-        QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("未连接仪器"));
+    if (scpi_) {
+        scpi_->deleteLater();
+        scpi_ = nullptr;
     }
-}
-uint8_t File_Buf[1024 * 32];
-uint8_t * File_BufPtr = (uint8_t *)File_Buf;
-void MainWindow::handleSDGSendValue(int id)
-{
-    if (instr_SDG != NULL)
-    {
-        QString FilePath = SDG_FilePath_list[id]->text();
-
-        QString SampleRateStr = SDG_SampleRate_list[id]->text();
-        QString AmplitudeStr = SDG_Amplitude_list[id]->text();
-        QString OffsetStr = SDG_Offset_list[id]->text();
-        QString PhaseStr = SDG_Phase_list[id]->text();
-
-        double SampleRate = SampleRateStr.toFloat();
-        double Amplitude = AmplitudeStr.toFloat();
-        double Offset = OffsetStr.toFloat();
-        double Phase = PhaseStr.toFloat();
-
-        QFile file(FilePath);
-        if(!file.open(QIODevice::ReadOnly)){
-            QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("打开.bin文件失败"));
-            return;
-        }
-        file.read((char *)File_Buf, 1024 * 32);
-        ViUInt32 FileSize = file.size();
-        file.close();
-
-        ViStatus status;
-        ViUInt32 retCount;
-        ViChar	buffer[1024*64];	/* For checking errors */
-        ViChar * bufferPtr = (ViChar *)buffer;
-        ViUInt32 bufferCount;
-
-        bufferCount = sprintf_s(buffer, sizeof(buffer), send_bin, id+1, Amplitude, Offset, Phase);
-        qDebug(buffer);
-        for (int j=0; j<FileSize; j++)
-        {
-            *(bufferPtr + bufferCount + j) = File_Buf[j];  // 正确的字节复制
-        }
-        status = viWrite(instr_SDG, (ViBuf)buffer, bufferCount+FileSize, (ViPUInt32)&retCount);
-
-        bufferCount = sprintf_s(buffer, sizeof(buffer), set_bin, id+1);
-        qDebug(buffer);
-        status = viWrite(instr_SDG, (ViBuf)buffer, bufferCount, (ViPUInt32)&retCount);
-
-        bufferCount = sprintf_s(buffer, sizeof(buffer), SetMode, id+1, "TARB");
-        qDebug(buffer);
-        status = viWrite(instr_SDG, (ViBuf)buffer, bufferCount, (ViPUInt32)&retCount);
-
-        bufferCount = sprintf_s(buffer, sizeof(buffer), SetSample, id+1, SampleRate);
-        qDebug(buffer);
-        status = viWrite(instr_SDG, (ViBuf)buffer, bufferCount, (ViPUInt32)&retCount);
+    if (ui->CONNECTLAN_DP->text() != QStringLiteral("连接")) {
+        ui->CONNECTLAN_DP->setText(QStringLiteral("连接"));
+        ui->comboBox_DP->setEnabled(true);
+        statusBar()->showMessage(QStringLiteral("仪器连接已断开"), 3000);
     }
-    else
-    {
-        QMessageBox::information(NULL, QStringLiteral("提示"), QStringLiteral("未连接仪器"));
-    }
-}
-void MainWindow::handleSDGChooseFile(int id)
-{
-    QString FilePath = QFileDialog::getOpenFileName().replace('\\','/');
-    SDG_FilePath_list[id]->setText(FilePath);
 }
