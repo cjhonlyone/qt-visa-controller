@@ -462,7 +462,6 @@ void MainWindow::on_CONNECTLAN_DP_clicked()
         }
 
         scpi_ = new Vxi11Client(this);
-        connect(scpi_, &Vxi11Client::disconnected, this, &MainWindow::onScpiDisconnected);
         connect(scpi_, &Vxi11Client::errorOccurred, this, [this](const QString &msg) {
             qDebug() << "VXI-11:" << msg;
         });
@@ -474,6 +473,7 @@ void MainWindow::on_CONNECTLAN_DP_clicked()
             scpi_ = nullptr;
             return;
         }
+        connect(scpi_, &Vxi11Client::disconnected, this, &MainWindow::onScpiDisconnected);
 
         ui->CONNECTLAN_DP->setText(QStringLiteral("断开"));
         ui->comboBox_DP->setDisabled(true);
@@ -487,9 +487,11 @@ void MainWindow::on_CONNECTLAN_DP_clicked()
             if (c.timer) c.timer->stop();
         }
         if (scpi_) {
-            scpi_->disconnectFromHost();
-            scpi_->deleteLater();
-            scpi_ = nullptr;
+            Vxi11Client *c = scpi_;
+            scpi_ = nullptr;                 // null first so onScpiDisconnected is a no-op
+            disconnect(c, nullptr, this, nullptr);
+            c->disconnectFromHost();
+            c->deleteLater();
         }
         ui->CONNECTLAN_DP->setText(QStringLiteral("连接"));
         ui->comboBox_DP->setEnabled(true);
