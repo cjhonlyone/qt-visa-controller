@@ -668,10 +668,17 @@ void MainWindow::handleHubPower(int i)
     UsbHubChannel &c = hubChannels_[i];
     const bool turnOn = (c.power->palette() == p_OFF);
     bool ok = false;
-    // 互锁模式下 CMD 0x01 无效（设备静默拒绝并返回 FF FF FF）。
-    // 开启时用 CMD 0x02 打开指定通道；关闭时用 CMD 0x02 0x0F "全部关"。
     if (ui->comboBox_HubMode->currentIndex() == 1) {
-        ok = hub_->setPowerInterlock(turnOn ? c.mask : static_cast<quint8>(SmartUsbHubClient::CHAll));
+        if (turnOn) {
+            // 互锁模式：CMD 0x02 打开指定通道，设备自动关闭其他通道。
+            ok = hub_->setPowerInterlock(c.mask);
+        } else {
+            // CMD 0x02 没有"全部关"语义（会被解析为开某通道）。
+            // 临时切到 Normal 模式，CMD 0x01 关闭，再切回 Interlock。
+            hub_->setMode(SmartUsbHubClient::ModeNormal);
+            ok = hub_->setPower(c.mask, false);
+            hub_->setMode(SmartUsbHubClient::ModeInterlock);
+        }
     } else {
         ok = hub_->setPower(c.mask, turnOn);
     }
