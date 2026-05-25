@@ -31,10 +31,9 @@ constexpr const char *kQryMeasAll      = ":MEAS:ALL? CH%1\n";
 constexpr int kVxi11ProbeConnectTimeoutMs = 1500;
 constexpr int kVxi11ConnectTimeoutMs = 3000;
 
-// SmartUSBHub VID/PID 占位：spec 未明确给出，若你的设备有固定 VID/PID，
-// 可在此修改，UI 会自动高亮匹配项。设为 0 表示不参与匹配。
-constexpr quint16 kHubVid = 0x0000;
-constexpr quint16 kHubPid = 0x0000;
+// SmartUSBHub USB VID/PID（CH340 芯片，USB\VID_1A86&PID_FE0C）
+constexpr quint16 kHubVid = 0x1A86;
+constexpr quint16 kHubPid = 0xFE0C;
 constexpr int kHubMeasurePeriodMs = 500;
 
 QByteArray fmtCh(const char *tmpl, int ch1)
@@ -554,26 +553,16 @@ void MainWindow::setupHubChannels()
 void MainWindow::refreshHubPorts()
 {
     ui->comboBox_HubPort->clear();
-    int matchIdx = -1;
-    int row = 0;
     const auto ports = QSerialPortInfo::availablePorts();
     for (const QSerialPortInfo &info : ports) {
-        QString label = info.portName();
-        const bool vidPidValid = info.hasVendorIdentifier() && info.hasProductIdentifier();
-        const bool isHub = kHubVid != 0 && kHubPid != 0 && vidPidValid &&
-                           info.vendorIdentifier() == kHubVid &&
-                           info.productIdentifier() == kHubPid;
-        if (!info.description().isEmpty()) {
-            label += QStringLiteral(" (") + info.description() + QStringLiteral(")");
-        }
-        if (isHub) {
-            label += QStringLiteral(" [SmartUSBHub]");
-            if (matchIdx < 0) matchIdx = row;
-        }
+        if (!info.hasVendorIdentifier() || !info.hasProductIdentifier()) continue;
+        if (info.vendorIdentifier() != kHubVid || info.productIdentifier() != kHubPid) continue;
+        const QString label = info.portName() + QStringLiteral(" (SmartUSBHub)");
         ui->comboBox_HubPort->addItem(label, info.portName());
-        ++row;
     }
-    if (matchIdx >= 0) ui->comboBox_HubPort->setCurrentIndex(matchIdx);
+    if (ui->comboBox_HubPort->count() == 0) {
+        ui->comboBox_HubPort->addItem(QStringLiteral("未找到 SmartUSBHub"), QString());
+    }
 }
 
 void MainWindow::on_REFRESHPORT_HUB_clicked()
