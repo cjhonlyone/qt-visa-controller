@@ -685,6 +685,10 @@ void MainWindow::handleHubPower(int i)
     if (!ok) {
         statusBar()->showMessage(QStringLiteral("CH%1 电源切换失败").arg(i + 1), 2000);
     }
+    // 联动：电源成功后同步数据线状态。
+    if (ok && ui->checkBox_HubLinkData->isChecked() && c.data) {
+        hub_->setData(c.mask, turnOn);
+    }
     // 互锁模式会影响其他通道，整体回读最稳。
     if (ui->comboBox_HubMode->currentIndex() == 1) {
         hubRefreshFullState();
@@ -692,6 +696,12 @@ void MainWindow::handleHubPower(int i)
         bool state = false;
         if (hub_->getPower(c.mask, &state)) {
             c.power->setPalette(state ? p_ON : p_OFF);
+        }
+        if (ok && ui->checkBox_HubLinkData->isChecked() && c.data) {
+            bool dataState = false;
+            if (hub_->getData(c.mask, &dataState)) {
+                c.data->setPalette(dataState ? p_ON : p_OFF);
+            }
         }
     }
 }
