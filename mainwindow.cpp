@@ -474,7 +474,7 @@ void MainWindow::on_CONNECTLAN_DP_clicked()
 
         for (int i = 0; i < channels_.size(); ++i) {
             handleGetParam(i);
-            if (channels_[i].timer) channels_[i].timer->start(250);
+            if (channels_[i].timer) channels_[i].timer->start(500);
         }
     } else {
         for (PowerChannel &c : channels_) {
@@ -679,9 +679,10 @@ void MainWindow::handleHubPower(int i)
     UsbHubChannel &c = hubChannels_[i];
     const bool turnOn = (c.power->palette() == p_OFF);
     bool ok = false;
-    // 互锁模式下必须用 CMD 0x02；这里通过当前模式决定。
-    if (ui->comboBox_HubMode->currentIndex() == 1 && turnOn) {
-        ok = hub_->setPowerInterlock(c.mask);
+    // 互锁模式下 CMD 0x01 无效（设备静默拒绝并返回 FF FF FF）。
+    // 开启时用 CMD 0x02 打开指定通道；关闭时用 CMD 0x02 0x0F "全部关"。
+    if (ui->comboBox_HubMode->currentIndex() == 1) {
+        ok = hub_->setPowerInterlock(turnOn ? c.mask : static_cast<quint8>(SmartUsbHubClient::CHAll));
     } else {
         ok = hub_->setPower(c.mask, turnOn);
     }

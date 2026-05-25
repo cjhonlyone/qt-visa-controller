@@ -46,6 +46,14 @@ bool SmartUsbHubClient::open(const QString &portName, int baud)
         return false;
     }
     port_->clear();
+    // Probe: send getMode (CMD 0x07) with a short timeout to confirm this is a SmartUSBHub.
+    // Prevents 4+ second UI freeze when the wrong serial port is selected.
+    QByteArray resp;
+    if (!sendAndReceive(buildFrame6(0x07, 0, 0), 0x07, 6, &resp, 300)) {
+        port_->close();
+        lastError_ = QStringLiteral("设备未响应，请确认端口 %1 对应 SmartUSBHub").arg(portName);
+        return false;
+    }
     return true;
 }
 
